@@ -3,9 +3,9 @@
 Everything on a restaurant's website that isn't the look: the API client and
 tenant resolution, the booking, menu, ordering/checkout (Stripe Elements),
 catering, opening hours, GDPR and legal flows, analytics, and hooks for
-custom designs. A site (today `customer-front-end`, later `site-template` and
-one `site-<slug>` per restaurant in the `booqy-sites` org) only holds layout,
-pages and look. Plan: `application/docs/orchestrator/CUSTOMER-SITES-PLAN.md`.
+custom designs. A site (`site-template`, and one private repo `site-<slug>`
+per restaurant in BookingSystemAdvancedOrg, created from it) only holds
+layout, pages and look. Plan: `application/docs/orchestrator/CUSTOMER-SITES-PLAN.md`.
 
 ## Use it in a site
 
@@ -31,7 +31,7 @@ Pages compose the flows: `<Menu />`, `<BookingFlow />`, `<OrderFlow />`,
 links in SMS and email need their routes too: `bokning/:locationId/:reservationId`
 (`ManageBooking`), `bestallning/:locationId/:orderId` (`OrderStatus`),
 `catering/:locationId/:requestId` (`CateringRequest`). See
-`customer-front-end/src/App.tsx`.
+`site-template/src/App.tsx`.
 
 A fully custom design can skip the components and use the hooks
 (`useSite`, `useMenuList`, `useLocationInfo`, `useStickyCart`, `useTheme`)
@@ -50,17 +50,34 @@ the guest picks one with `ThemeToggle` (`booqy-theme` in localStorage,
 `--tenant-accent*` from `SiteProvider`. Font files (`@font-face`) belong to the
 site.
 
+## Install
+
+Published to GitHub Packages (private, BookingSystemAdvancedOrg). A site's
+`.npmrc` has `@booqy:registry=https://npm.pkg.github.com`; in Actions the
+workflow's `GITHUB_TOKEN` reads it (the repo needs read access to the
+package, see the runbook), locally `npm login --registry=https://npm.pkg.github.com`
+once with a GitHub token that has `read:packages`.
+
 ## Develop
 
-In `customer-front-end` this is an npm workspace; the site reads the
-package's source directly (export condition `@booqy/source`), so no build is
-needed while developing. From the repo root:
-
 ```bash
-npm test -w @booqy/site-kit
-npm run build -w @booqy/site-kit
+npm install
+npm test        # vitest
+npm run lint    # oxlint
+npm run build   # types, ESM, site-kit.css to dist/
 ```
 
-The build type checks, then writes ESM, types and `site-kit.css` to `dist/`.
-Not published yet; it moves to the `booqy-sites` org and GitHub Packages in a
-later phase (`publishConfig` already points there).
+To try a change in a site before releasing it: `npm pack` here and
+`npm install ../site-kit/booqy-site-kit-<version>.tgz` in the site (don't
+commit that).
+
+## Release
+
+1. On `dev`: the change, a CHANGELOG entry, `npm version <patch|minor|major> --no-git-tag-version`.
+2. PR `dev` -> `main`, merge when CI is green.
+3. Tag the merge commit on `main`: `git tag v<version> && git push origin v<version>`.
+   The Publish workflow tests, builds and publishes that version.
+
+Every site repo gets a Dependabot PR; patch versions merge themselves once
+the site's CI is green, minor and major wait for a person. Semver rules are
+at the top of CHANGELOG.md.

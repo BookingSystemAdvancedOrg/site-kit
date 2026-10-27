@@ -3,6 +3,10 @@
   "version": "0.1.0",
   "description": "Booqy's restaurant site logic: API client, tenant resolution, booking, menu, ordering, payment, catering, GDPR and analytics as React components and hooks.",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/BookingSystemAdvancedOrg/site-kit.git"
+  },
   "type": "module",
   "sideEffects": [
     "**/*.css",
@@ -16,17 +20,14 @@
   ],
   "exports": {
     ".": {
-      "@booqy/source": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
     "./testing": {
-      "@booqy/source": "./src/testing.ts",
       "types": "./dist/testing.d.ts",
       "default": "./dist/testing.js"
     },
     "./styles.css": {
-      "@booqy/source": "./src/styles/index.css",
       "default": "./dist/site-kit.css"
     },
     "./package.json": "./package.json"
@@ -38,7 +39,8 @@
     "build": "tsc -p tsconfig.json && vite build && tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json",
     "lint": "oxlint",
-    "test": "vitest run"
+    "test": "vitest run",
+    "prepublishOnly": "npm run build"
   },
   "peerDependencies": {
     "react": "^19.2.0",
