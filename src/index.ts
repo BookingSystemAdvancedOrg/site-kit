@@ -1,5 +1,5 @@
 /**
- * @booqy/site-kit: allt på en restaurangs webbplats som inte är look.
+ * @bookingsystemadvancedorg/site-kit: allt på en restaurangs webbplats som inte är look.
  * API-klienten och vilken restaurang domänen tillhör, flödena (meny, boka
  * bord, beställ och betala, catering, öppettider, juridik), GDPR-rutorna,
  * besöksstatistiken och krokar för egna designer. Sajten (site-template /
@@ -7,7 +7,7 @@
  * färger, typsnitt, hörn och avstånd ur CSS-variabler (styles.css).
  *
  * Kom igång: configureSiteKit({...}) i main.tsx, <SiteProvider> runt appen
- * (inuti en router), importera '@booqy/site-kit/styles.css' före sajtens CSS.
+ * (inuti en router), importera '@bookingsystemadvancedorg/site-kit/styles.css' före sajtens CSS.
  */
 
 /* --- Inställningar ------------------------------------------------------- */

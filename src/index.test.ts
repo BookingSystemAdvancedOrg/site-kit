@@ -23,7 +23,7 @@ const FUNCTIONS = [
   'setTheme', 'currentTheme', 'trackPage', 'captureAttribution', 'paymentAppearance', 'stripeFor',
 ] as const
 
-describe('@booqy/site-kit public API', () => {
+describe('@bookingsystemadvancedorg/site-kit public API', () => {
   it.each(COMPONENTS)('exports the component %s', (name) => {
     expect(typeof kit[name]).toBe('function')
   })

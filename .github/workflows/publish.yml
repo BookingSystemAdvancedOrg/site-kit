@@ -1,4 +1,4 @@
-# Publishes @booqy/site-kit to GitHub Packages when a version tag (v1.2.3)
+# Publishes @bookingsystemadvancedorg/site-kit to GitHub Packages when a version tag (v1.2.3)
 # is pushed. The tag must match package.json's version and be on main.
 name: Publish
 
@@ -28,7 +28,7 @@ jobs:
           node-version: "24"
           cache: npm
           registry-url: https://npm.pkg.github.com
-          scope: "@booqy"
+          scope: "@bookingsystemadvancedorg"
       - run: npm ci
       - run: npm run lint
       - run: npm test

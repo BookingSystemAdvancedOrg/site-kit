@@ -1,5 +1,5 @@
 /**
- * @booqy/site-kit/testing: testhjälp för sajtens egna tester. WithSite
+ * @bookingsystemadvancedorg/site-kit/testing: testhjälp för sajtens egna tester. WithSite
  * renderar under en router och en färdig restaurang (siteConfig()), utan
  * nätverk; json() bygger ett fetch-svar.
  */

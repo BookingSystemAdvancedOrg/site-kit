@@ -1,5 +1,5 @@
 {
-  "name": "@booqy/site-kit",
+  "name": "@bookingsystemadvancedorg/site-kit",
   "version": "0.1.0",
   "description": "Booqy's restaurant site logic: API client, tenant resolution, booking, menu, ordering, payment, catering, GDPR and analytics as React components and hooks.",
   "license": "MIT",

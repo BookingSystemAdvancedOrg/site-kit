@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to `@booqy/site-kit`. Semver: removing or renaming
+All notable changes to `@bookingsystemadvancedorg/site-kit`. Semver: removing or renaming
 anything exported from `index.ts`, `testing.ts` or `styles.css` (including a
 CSS variable or class name a site styles) is a major version.
 
@@ -26,4 +26,4 @@ the site.
 - Analytics: `trackPage`, `trackOfferView`, attribution.
 - `styles.css`: the components' default look (Booqy's bongrail), driven by
   CSS variables in `theme.css` with light and dark mode.
-- `@booqy/site-kit/testing`: `WithSite`, `siteConfig`, `json` for site tests.
+- `@bookingsystemadvancedorg/site-kit/testing`: `WithSite`, `siteConfig`, `json` for site tests.

@@ -1,4 +1,4 @@
-# @booqy/site-kit
+# @bookingsystemadvancedorg/site-kit
 
 Everything on a restaurant's website that isn't the look: the API client and
 tenant resolution, the booking, menu, ordering/checkout (Stripe Elements),
@@ -11,8 +11,8 @@ layout, pages and look. Plan: `application/docs/orchestrator/CUSTOMER-SITES-PLAN
 
 ```tsx
 // main.tsx
-import { SiteProvider, configureSiteKit } from '@booqy/site-kit'
-import '@booqy/site-kit/styles.css' // before the site's own CSS
+import { SiteProvider, configureSiteKit } from '@bookingsystemadvancedorg/site-kit'
+import '@bookingsystemadvancedorg/site-kit/styles.css' // before the site's own CSS
 import './site.css'
 
 configureSiteKit({
@@ -52,8 +52,10 @@ site.
 
 ## Install
 
-Published to GitHub Packages (private, BookingSystemAdvancedOrg). A site's
-`.npmrc` has `@booqy:registry=https://npm.pkg.github.com`; in Actions the
+Published to GitHub Packages (BookingSystemAdvancedOrg) as
+`@bookingsystemadvancedorg/site-kit`: GitHub's npm registry only takes the
+owner's name as the scope. A site's `.npmrc` has
+`@bookingsystemadvancedorg:registry=https://npm.pkg.github.com`; in Actions the
 workflow's `GITHUB_TOKEN` reads it (the repo needs read access to the
 package, see the runbook), locally `npm login --registry=https://npm.pkg.github.com`
 once with a GitHub token that has `read:packages`.
