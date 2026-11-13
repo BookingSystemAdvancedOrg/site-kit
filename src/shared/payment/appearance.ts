@@ -35,7 +35,7 @@ const FALLBACK: Record<Theme, Record<string, string>> = {
     '--fill': '#332e2b',
     '--ink': '#f6ece9',
     '--muted': '#b8aca6',
-    '--line': 'rgba(255, 255, 255, 0.14)',
+    '--line': 'rgba(253, 250, 246, 0.14)',
     '--accent': '#b88f8a',
     '--danger': '#e0686f',
     '--ok': '#7cc695',

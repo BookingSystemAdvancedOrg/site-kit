@@ -28,7 +28,7 @@ describe('paymentAppearance', () => {
 
   it("uses the restaurant's colour and skips values Stripe can't read", () => {
     document.documentElement.style.setProperty('--accent', '#0b6e4f')
-    document.documentElement.style.setProperty('--surface', 'color-mix(in srgb, red 10%, white)')
+    document.documentElement.style.setProperty('--surface', 'color-mix(in srgb, red 10%, #fdfaf6)')
     const a = paymentAppearance('light')
     expect(a.variables?.colorPrimary).toBe('#0b6e4f')
     expect(a.variables?.colorBackground).toBe('#fbfaf6')
