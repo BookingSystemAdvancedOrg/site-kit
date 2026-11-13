@@ -4,6 +4,13 @@ All notable changes to `@bookingsystemadvancedorg/site-kit`. Semver: removing or
 anything exported from `index.ts`, `testing.ts` or `styles.css` (including a
 CSS variable or class name a site styles) is a major version.
 
+## Unreleased
+
+- No pure white (owner, 2026-11-13): every white in the styles, Stripe field
+  fallbacks and QR codes is off-white (#fdfaf6). `textOn` and `accentPair`
+  measure text contrast against that off-white and return `#fdfaf6` instead
+  of `#ffffff`, so a few mid-tone restaurant colours now get near-black text.
+
 ## 0.1.0 (2026-10-27)
 
 First version, extracted from `customer-front-end` with no visible change to
