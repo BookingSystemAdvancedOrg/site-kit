@@ -287,6 +287,21 @@ describe('BestallPage', () => {
     expect(await screen.findByRole('button', { name: 'Lägg till Margherita' })).toBeDisabled()
   })
 
+  it('sends a dish\'s wish and allergy with the order, for the kitchen ticket', async () => {
+    const user = userEvent.setup()
+    ordering = { ...ordering, forTable: { label: '5', title: 'Bord 5' } }
+    render(<WithSite config={config()} path="/bestall?bord=code-5"><BestallPage /></WithSite>)
+    await user.click(await screen.findByRole('button', { name: 'Lägg till Margherita' }))
+    await user.click(screen.getByText('Önskemål eller allergi?'))
+    await user.type(screen.getByLabelText('Önskemål'), 'ingen lök')
+    await user.type(screen.getByLabelText('Allergi'), 'jordnötsallergi')
+    await fill(user)
+    await user.click(screen.getByRole('button', { name: /Till betalning/ }))
+    expect(postedOrder()).toMatchObject({
+      items: [{ menuItemId: 'pizza', quantity: 1, note: 'ingen lök', allergy: 'jordnötsallergi' }],
+    })
+  })
+
   it('shows alcohol as table-only for pickup', async () => {
     render(<WithSite config={config()} path="/bestall"><BestallPage /></WithSite>)
     expect(await screen.findByText('Bara vid bordet')).toBeInTheDocument()
