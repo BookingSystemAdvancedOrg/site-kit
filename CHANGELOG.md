@@ -11,7 +11,10 @@ CSS variable or class name a site styles) is a major version.
   `normalizePhone`, which now lives in `shared/phone` and also refuses
   Swedish numbers of the wrong length (same rules as the server). New
   `formatPhoneNational` ("070-174 06 05"), `phoneHref` ("tel:+46701740605")
-  and `PhoneLink`; the guest pages show restaurant numbers that way.
+  and `PhoneLink`; the guest pages (also the privacy policy contact) show
+  restaurant numbers that way. 010 and 020 numbers get a 2-digit prefix,
+  and only the mobile series (070, 072, 073, 076, 079) are split as 07x, so
+  "+46771123456" shows as "0771-12 34 56".
 - No pure white (owner, 2026-11-13): every white in the styles, Stripe field
   fallbacks and QR codes is off-white (#fdfaf6). `textOn` and `accentPair`
   measure text contrast against that off-white and return `#fdfaf6` instead
