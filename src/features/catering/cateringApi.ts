@@ -1,4 +1,5 @@
 import { apiGet, apiPost, ApiError } from '../../shared/api'
+import { botCheckMessage } from '../../shared/botCheckMessage'
 import { withAttribution } from '../../shared/visits'
 import { CATERING_TOKEN_PREFIX } from '../../shared/storageRegistry'
 
@@ -192,7 +193,6 @@ export interface RequestInput extends QuoteInput {
   notes?: string
   acceptTerms: true
   language: 'sv'
-  turnstileToken?: string
   /** Gästen kryssade i "skicka mig erbjudanden" (äldre backend). */
   marketingOptIn?: boolean
   /** Frivilligt samtycke till erbjudanden (shared/MarketingConsent.tsx). */
@@ -413,9 +413,12 @@ const ERRORS: Record<string, string> = {
   changed_retry: 'Något ändrades just nu. Försök igen.',
 }
 
-export function errorMessage(err: unknown): string {
+/** `phone` är restaurangens nummer, som gästen kan ringa när felet inte går att peka ut. */
+export function errorMessage(err: unknown, phone?: string): string {
   if (err instanceof DOMException && err.name === 'TimeoutError') return 'Det tog för lång tid. Försök igen.'
   if (!(err instanceof ApiError)) return 'Något gick fel. Försök igen.'
+  const botCheck = botCheckMessage(err)
+  if (botCheck) return botCheck
   if (ERRORS[err.message]) return ERRORS[err.message]
   if (/^at least (\d+) guests/.test(err.message)) return `Minst ${err.message.match(/\d+/)![0]} gäster.`
   if (/needs at least (\d+) guests$/.test(err.message)) {
@@ -432,9 +435,14 @@ export function errorMessage(err: unknown): string {
   if (/^phone/.test(err.message)) return 'Fyll i ett giltigt mobilnummer.'
   if (/^email/.test(err.message)) return 'Fyll i en giltig e-postadress.'
   if (/^deliveryAddress/.test(err.message)) return 'Fyll i leveransadressen (gata, postnummer och ort).'
-  if (/^turnstile/.test(err.message)) return 'Bekräfta säkerhetskontrollen och försök igen.'
+  if (/^deliveryDate must be within a year/.test(err.message)) return 'Välj ett datum inom ett år framåt.'
+  if (/^deliveryDate/.test(err.message)) return 'Välj ett datum.'
+  if (/^deliveryTime/.test(err.message)) return 'Välj en tid, t.ex. 12:00.'
+  if (/^notes/.test(err.message)) return 'Önskemålen är för långa. Korta ner texten och försök igen.'
   if (err.status === 404) return 'Förfrågan hittades inte. Kontrollera länken.'
   if (err.status === 429) return ERRORS.too_many_requests
-  if (err.status === 400) return `Kontrollera uppgifterna: ${err.message}`
+  if (err.status === 400) {
+    return `Något i uppgifterna stämmer inte. Kontrollera fälten, eller ring restaurangen${phone ? ` på ${phone}` : ''}.`
+  }
   return 'Det gick inte just nu. Försök igen om en stund.'
 }

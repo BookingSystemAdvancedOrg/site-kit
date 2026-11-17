@@ -4,6 +4,7 @@ import { clearCart, clock, getOrder, kronor, orderErrorMessage, recallToken } fr
 import type { GuestOrder } from './orderApi'
 import { FlowSteps } from '../../shared/FlowSteps'
 import { Celebrate } from '../../shared/Celebrate'
+import { PhoneLink } from '../../shared/PhoneLink'
 
 /** Hur ofta sidan frågar om beställningen medan gästen väntar. */
 export const STATUS_POLL_MS = 5_000
@@ -21,6 +22,14 @@ function tokenFor(orderId: string): string {
     // Trasig länk - prova fliken.
   }
   return recallToken(orderId) ?? ''
+}
+
+/** Var maten hamnar, som personalen ser det: "Bord 7", ett namngivet bord, eller Avhämtning. */
+function placeTitle(order: GuestOrder): string {
+  if (order.mode !== 'table') return 'Avhämtning'
+  const label = order.tableLabel ?? ''
+  if (!label) return 'Ditt bord'
+  return /^\d/.test(label) ? `Bord ${label}` : label
 }
 
 function headline(order: GuestOrder): string {
@@ -67,7 +76,7 @@ function nextUp(order: GuestOrder): string | null {
     case 'preparing':
       return order.mode === 'pickup' ? 'Snart klart. Du får ett sms när maten går att hämta.' : 'Snart klart. Maten kommer till bordet.'
     case 'ready':
-      return order.mode === 'pickup' ? 'Säg ditt namn eller beställningsnumret i kassan.' : null
+      return order.mode === 'pickup' ? 'Säg ditt namn eller beställningsnumret när du hämtar.' : null
     default:
       return null
   }
@@ -141,6 +150,7 @@ export default function OrderStatusPage() {
       {error && <p className="notice error" role="alert">{error}</p>}
       {order && (
         <>
+          <p className="order-table-chip order-place">{placeTitle(order)}</p>
           <p className={`booking-status${['ready', 'completed'].includes(order.status) ? ' stamp-ok' : ''}`} aria-live="polite" key={order.status}>
             {headline(order)}
           </p>
@@ -174,9 +184,14 @@ export default function OrderStatusPage() {
             </p>
           )}
           <ul className="cart-list order-status-lines">
-            {order.lines.map((line) => (
-              <li key={line.menuItemId}>
-                <span className="cart-item-name">{line.quantity} × {line.name}</span>
+            {order.lines.map((line, i) => (
+              <li key={`${line.menuItemId}-${i}`}>
+                <span className="cart-item-name">
+                  {line.quantity} × {line.name}
+                  {line.options?.length ? (
+                    <span className="cart-item-options">{line.options.map((o) => o.choice).join(', ')}</span>
+                  ) : null}
+                </span>
                 <span />
                 <span className="cart-item-price">{kronor(line.total)}</span>
               </li>
@@ -193,7 +208,7 @@ export default function OrderStatusPage() {
             <span>{kronor(order.totalAmount)}</span>
           </div>
           {order.location?.phoneNumber && (
-            <p className="cell-muted">Frågor? Ring {order.location.phoneNumber}.</p>
+            <p className="cell-muted">Frågor? Ring <PhoneLink phone={order.location.phoneNumber} />.</p>
           )}
         </>
       )}

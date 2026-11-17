@@ -22,7 +22,10 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "erasableSyntaxOnly": true,
-    "noFallthroughCasesInSwitch": true
+    "noFallthroughCasesInSwitch": true,
+
+    /* @booqy/brand from the vendored source (see vite.config.ts) */
+    "paths": { "@booqy/brand": ["./src/vendor/brand/index.ts"] }
   },
   "include": ["src", "vite.config.ts"]
 }

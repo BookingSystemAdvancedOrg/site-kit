@@ -1,5 +1,7 @@
 import { apiDelete, apiGet, apiPost, ApiError } from '../../shared/api'
+import { botCheckMessage } from '../../shared/botCheckMessage'
 import { withAttribution } from '../../shared/visits'
+import { normalizePhone } from '../../shared/phone'
 
 /**
  * Klient mot bokningsrutterna (backend docs/RESERVATIONS.md):
@@ -156,8 +158,6 @@ export interface BookingRequest {
   /** Frivilligt samtycke till erbjudanden (shared/MarketingConsent.tsx). */
   marketingConsent?: { channels: ('email' | 'sms')[]; textVersion: string }
   acceptTerms: true
-  /** Token från säkerhetskontrollen (Cloudflare Turnstile) när den visas. */
-  turnstileToken?: string
   /** Bordet hålls redan (POST /holds) - bokningen tar över det. */
   holdId?: string
 }
@@ -185,7 +185,6 @@ export interface HoldRequest {
   startTime: string
   tableIds: string[]
   partySize: number
-  turnstileToken?: string
 }
 
 export interface GuestReservation {
@@ -240,18 +239,12 @@ const path = (locationId: string) => `/locations/${encodeURIComponent(locationId
 export const NAME_MAX = 100
 export const EMAIL_MAX = 254
 export const NOTES_MAX = 500
-const E164 = /^\+[1-9]\d{7,14}$/
 const EMAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/
 
 /** Telefonnummer som servern sparar dem (E.164), eller null om servern
- * skulle neka numret. "070-123 45 67" -> "+46701234567". */
-export function normalizePhone(raw: string): string | null {
-  let digits = raw.trim().replace(/[\s\-.]/g, '')
-  digits = digits.replace(/^(\+\d{1,3})\(0\)/, '$1').replace(/[()]/g, '')
-  if (digits.startsWith('00')) digits = `+${digits.slice(2)}`
-  else if (digits.startsWith('0')) digits = `+46${digits.slice(1)}`
-  return E164.test(digits) ? digits : null
-}
+ * skulle neka numret. Bor i shared/phone så att fältet och valideringen
+ * följer samma regler. */
+export { normalizePhone }
 
 export function validEmail(raw: string): boolean {
   const email = raw.trim()
@@ -277,8 +270,6 @@ const VALIDATION_TEXT: [RegExp, (m: RegExpMatchArray) => string][] = [
   [/^acceptTerms must be true/, () => 'Du behöver godkänna bokningsvillkoren.'],
   [/^online booking is closed for this date/, () => 'Onlinebokningen är stängd den dagen. Ring oss för att boka.'],
   [/^tableIds are not offered online/, () => 'Bordet går inte att boka online för så många personer. Välj ett annat bord.'],
-  [/^turnstile token expired/, () => 'Säkerhetskontrollen hann gå ut. Bekräfta igen och tryck Boka.'],
-  [/^turnstile/, () => 'Bekräfta säkerhetskontrollen (rutan ovanför knappen) och försök igen.'],
   [/^(tableIds|at most \d+ tables)/, () => 'Välj bord igen.'],
 ]
 
@@ -299,20 +290,17 @@ export function staleSelection(err: unknown): 'time' | 'tables' | null {
   return null
 }
 
-/** Servern kräver säkerhetskontrollen men sidan visar den inte - sidan
- * laddades innan kontrollen slogs på och behöver laddas om. */
-export function turnstileMissing(err: unknown): boolean {
-  return err instanceof ApiError && err.status === 400 && /^turnstile token is required/.test(err.message)
-}
-
-/** Svenska felmeddelanden för API:ts felkoder. */
-export function bookingErrorMessage(err: unknown): string {
+/** Svenska felmeddelanden för API:ts felkoder. `phone` är restaurangens
+ * nummer, som gästen kan ringa när felet inte går att peka ut. */
+export function bookingErrorMessage(err: unknown, phone?: string): string {
   if (err instanceof DOMException && err.name === 'TimeoutError') {
     return 'Det tog för lång tid att svara. Försök igen.'
   }
   if (!(err instanceof ApiError)) {
     return 'Något gick fel. Försök igen.'
   }
+  const botCheck = botCheckMessage(err)
+  if (botCheck) return botCheck
   switch (err.message) {
     case 'hold_expired':
       return 'Tiden för att slutföra bokningen gick ut och bordet släpptes. Börja om.'
@@ -343,7 +331,7 @@ export function bookingErrorMessage(err: unknown): string {
       const match = err.message.match(pattern)
       if (match) return text(match)
     }
-    return `Kontrollera uppgifterna: ${err.message}`
+    return `Något i uppgifterna stämmer inte. Kontrollera fälten, eller ring restaurangen${phone ? ` på ${phone}` : ''}.`
   }
   if (err.status === 429) return 'För många försök. Vänta en stund och försök igen.'
   return 'Bokningen kunde inte genomföras just nu. Försök igen om en stund.'

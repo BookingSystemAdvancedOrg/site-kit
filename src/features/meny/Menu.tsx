@@ -1,17 +1,23 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
+import { Button } from '@booqy/brand'
 import { Plate } from '../../shared/Plate'
 import { useMenuList } from './useMenuList'
-import { CATEGORY_LABEL, formatPrice, groupByCategory, menuImageUrl } from './menuApi'
+import { allergenText, formatPrice, groupByCategory, menuImagePosition, menuImageUrl } from './menuApi'
 import type { MenuCategory } from './menuApi'
+import { SkelDishes } from '../../shared/Skeleton'
 
 /**
  * Hela menyn som tallrikar sedda ovanifrån: alla kategorier i en lång lista
  * med en klistrig kategorirad som hoppar dit och visar var man är. Sajten
  * lägger sin egen hero ovanför (se site-template:s MenyPage).
  */
-export function Menu() {
-  const { configured, loading, error, items } = useMenuList()
-  const groups = groupByCategory(items)
+export function Menu({ hideHeading = false }: {
+  /** Rubriken finns redan ovanför på sidan: ingen egen "Meny". */
+  hideHeading?: boolean
+} = {}) {
+  const { configured, loading, error, retry, items, categories } = useMenuList()
+  const headingId = useId()
+  const groups = groupByCategory(items, categories)
   const [active, setActive] = useState<MenuCategory | null>(null)
   const sectionRefs = useRef(new Map<MenuCategory, HTMLElement>())
 
@@ -35,16 +41,21 @@ export function Menu() {
   }
 
   return (
-    <section className="menu" aria-labelledby="menu-heading">
-      <h2 id="menu-heading" className="menu-heading">Meny</h2>
+    <section className="menu" aria-labelledby={hideHeading ? undefined : headingId}>
+      {!hideHeading && <h2 id={headingId} className="menu-heading">Meny</h2>}
 
       {!configured && (
         <p className="notice" role="status">
           Menyn är inte tillgänglig just nu - titta gärna förbi lite senare.
         </p>
       )}
-      {error && <p className="notice error" role="alert">{error}</p>}
-      {loading && !error && <p className="notice" role="status">Hämtar menyn…</p>}
+      {error && (
+        <div className="notice error notice--stack" role="alert">
+          <p>{error}</p>
+          <Button variant="secondary" onClick={retry}>Försök igen</Button>
+        </div>
+      )}
+      {loading && !error && <SkelDishes />}
       {!loading && !error && configured && groups.length === 0 && (
         <p className="notice" role="status">Menyn är tom just nu.</p>
       )}
@@ -59,7 +70,7 @@ export function Menu() {
               aria-current={(active ?? groups[0].category) === g.category ? 'true' : undefined}
               onClick={() => jump(g.category)}
             >
-              {CATEGORY_LABEL[g.category]}
+              {g.label}
               <span className="chip-count">{g.items.length}</span>
             </button>
           ))}
@@ -77,14 +88,15 @@ export function Menu() {
             else sectionRefs.current.delete(group.category)
           }}
         >
-          <h3 id={`cat-${group.category}`} className="menu-section-title">{CATEGORY_LABEL[group.category]}</h3>
+          <h3 id={`cat-${group.category}`} className="menu-section-title">{group.label}</h3>
           <ul className="dish-list">
             {group.items.map((dish) => (
               <li className="dish" key={dish.menuItemId}>
-                <Plate src={menuImageUrl(dish.imageKey)} name={dish.name} />
+                <Plate src={menuImageUrl(dish.imageKey)} position={menuImagePosition(dish.imageFocus)} name={dish.name} />
                 <div className="dish-text">
                   <h4 className="dish-name">{dish.name}</h4>
                   {dish.description && <p className="dish-desc">{dish.description}</p>}
+                  {allergenText(dish.allergens) && <p className="dish-allergens">{allergenText(dish.allergens)}</p>}
                 </div>
                 <span className="dish-price">{formatPrice(dish.price)}</span>
               </li>

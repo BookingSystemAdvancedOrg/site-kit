@@ -13,7 +13,6 @@ import {
   normalizePhone,
   staleSelection,
   todayIn,
-  turnstileMissing,
   validEmail,
 } from './bookingApi'
 import { json } from '../../test/siteData'
@@ -45,7 +44,7 @@ describe('errors', () => {
     [new ApiError(409, 'table_taken'), 'hann bokas'],
     [new ApiError(409, 'already_started'), 'redan börjat'],
     [new ApiError(404, 'not found'), 'hittades inte'],
-    [new ApiError(400, 'phone must be valid'), 'phone must be valid'],
+    [new ApiError(400, 'phone must be valid'), 'Kontrollera fälten, eller ring restaurangen.'],
     [new ApiError(503, 'x'), 'kunde inte genomföras'],
     [new ApiError(400, 'startTime is not a bookable time for this date'), 'Tiden går inte att boka längre'],
     [new ApiError(400, "tableIds contains a table that isn't bookable at this time"), 'Välj bord igen'],
@@ -68,6 +67,14 @@ describe('errors', () => {
     }
   })
 
+  it('never appends an unknown English server message and names the restaurant phone', () => {
+    const err = new ApiError(400, 'the booking must be for the held date, time, tables and party size')
+    expect(bookingErrorMessage(err)).not.toMatch(/the booking must/)
+    expect(bookingErrorMessage(err, '08-123 456')).toBe(
+      'Något i uppgifterna stämmer inte. Kontrollera fälten, eller ring restaurangen på 08-123 456.',
+    )
+  })
+
   it('tells which choice went stale', () => {
     expect(staleSelection(new ApiError(400, 'startTime is not a bookable time for this date'))).toBe('time')
     expect(staleSelection(new ApiError(409, 'table_taken'))).toBe('tables')
@@ -84,11 +91,24 @@ describe('guest fields (same rules as the server)', () => {
     ['+46 (0)70 123 45 67', '+46701234567'],
     ['0046701234567', '+46701234567'],
     ['+358 40 123 4567', '+358401234567'],
+    ['701740605', '+46701740605'],
+    ['70 174 06 05', '+46701740605'],
+    ['+46701740605', '+46701740605'],
+    ['+46 070 174 06 05', '+46701740605'],
+    ['0046 70 174 06 05', '+46701740605'],
+    ['08-123 45 67', '+4681234567'],
   ])('accepts %s', (raw, expected) => {
     expect(normalizePhone(raw)).toBe(expected)
   })
 
-  it.each(['', '12345678', '070-12', '+0701234567', 'telefon'])('rejects %s', (raw) => {
+  it.each([
+    '', '12345678', '070-12', '+0701234567', 'telefon',
+    '70174060', // mobile one digit short
+    '7017406051', // mobile one digit too many, no prefix
+    '+4670174060', // +46 mobile one digit short
+    '+467017406051', // +46 mobile one digit too many
+    '0812345', // Stockholm too short
+  ])('rejects %s', (raw) => {
     expect(normalizePhone(raw)).toBeNull()
   })
 
@@ -148,9 +168,6 @@ describe('table rules, special days and the bot check', () => {
   it.each([
     ['online booking is closed for this date', 'stängd den dagen'],
     ['tableIds are not offered online for this party size', 'Välj ett annat bord'],
-    ['turnstile token is required', 'Bekräfta säkerhetskontrollen'],
-    ['turnstile verification failed', 'Bekräfta säkerhetskontrollen'],
-    ['turnstile token expired', 'hann gå ut'],
   ])('explains %s in Swedish', (message, text) => {
     expect(bookingErrorMessage(new ApiError(400, message))).toContain(text)
   })
@@ -163,11 +180,13 @@ describe('table rules, special days and the bot check', () => {
     expect(staleSelection(new ApiError(400, 'tableIds are not offered online for this party size'))).toBe('tables')
   })
 
-  it('knows when the server wants a bot check the page does not show', () => {
-    expect(turnstileMissing(new ApiError(400, 'turnstile token is required'))).toBe(true)
-    expect(turnstileMissing(new ApiError(400, 'turnstile verification failed'))).toBe(false)
-    expect(turnstileMissing(new ApiError(409, 'table_taken'))).toBe(false)
-    expect(turnstileMissing(new Error('x'))).toBe(false)
+  it('explains a bot check that could not load or did not pass, and who acts', () => {
+    expect(bookingErrorMessage(new ApiError(0, 'bot_check_unavailable'))).toContain('stäng av blockerande tillägg')
+    expect(bookingErrorMessage(new ApiError(403, 'bot_check_failed'))).toContain('kontakta restaurangen')
+    expect(bookingErrorMessage(new ApiError(400, 'bot_check_failed', { error: 'bot_check_failed' })))
+      .toContain('Säkerhetskontrollen gick inte igenom')
+    expect(bookingErrorMessage(new ApiError(400, 'x', { code: 'bot_check_failed' })))
+      .toContain('Säkerhetskontrollen gick inte igenom')
   })
 
   it('describes special days for guests', () => {

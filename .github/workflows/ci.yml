@@ -21,3 +21,20 @@ jobs:
       - run: npm run lint
       - run: npm test
       - run: npm run build
+
+  # src/ must match customer-front-end/packages/site-kit/src (and src/vendor/brand
+  # packages/brand/src) on dev: red here means a guest-site change has not been
+  # ported yet (npm run sync:check -- ../customer-front-end shows which files).
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: BookingSystemAdvancedOrg/customer-front-end
+          ref: dev
+          path: .customer-front-end
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - run: node scripts/sync-check.mjs .customer-front-end

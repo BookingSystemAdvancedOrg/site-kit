@@ -30,8 +30,9 @@ Pages compose the flows: `<Menu />`, `<BookingFlow />`, `<OrderFlow />`,
 `<CateringFlow />`, `<PrivacyPolicy />` and so on. The guest pages behind
 links in SMS and email need their routes too: `bokning/:locationId/:reservationId`
 (`ManageBooking`), `bestallning/:locationId/:orderId` (`OrderStatus`),
-`catering/:locationId/:requestId` (`CateringRequest`). See
-`site-template/src/App.tsx`.
+`catering/:locationId/:requestId` (`CateringRequest`). Gift cards, events
+and the waiting list have their own pages (routes in CHANGELOG 0.3.0, loaders
+in `sitePages`). See `site-template/src/App.tsx`.
 
 A fully custom design can skip the components and use the hooks
 (`useSite`, `useMenuList`, `useLocationInfo`, `useStickyCart`, `useTheme`)
@@ -72,6 +73,17 @@ npm run build   # types, ESM, site-kit.css to dist/
 To try a change in a site before releasing it: `npm pack` here and
 `npm install ../site-kit/booqy-site-kit-<version>.tgz` in the site (don't
 commit that).
+
+## Source of truth
+
+`customer-front-end/packages/site-kit/src` is where guest-site changes are
+made today; this repo's `src/` must match it, and `src/vendor/brand` must
+match `customer-front-end/packages/brand/src` (`@booqy/brand` is not
+published, so it is bundled from there). Check before a release:
+
+```bash
+npm run sync:check -- ../customer-front-end
+```
 
 ## Release
 
