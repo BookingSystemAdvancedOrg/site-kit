@@ -1,14 +1,28 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
+import { Button } from '@booqy/brand'
 import { isApiConfigured } from '../../shared/api'
 import { useSite } from '../../shared/SiteContext'
+import { Slot } from '../../shared/slots'
 import { useLocationInfo } from '../../shared/useLocationInfo'
 import { PhoneInput } from '../../shared/PhoneInput'
+import { PhoneLink } from '../../shared/PhoneLink'
+import { FlowSteps } from '../../shared/FlowSteps'
 import { normalizePhone, validEmail } from '../boka/bookingApi'
 import { Plate } from '../../shared/Plate'
-import { CATEGORY_LABEL, getPublicMenu, groupByCategory, menuImageUrl } from '../meny/menuApi'
-import type { PublicMenuItem } from '../meny/menuApi'
+import {
+  allergenText,
+  DEFAULT_CATEGORIES,
+  getPublicMenuWithCategories,
+  groupByCategory,
+  menuImagePosition,
+  menuImageUrl,
+  optionsOre,
+  validPicks,
+} from '../meny/menuApi'
+import type { MenuCategoryEntry, PublicMenuItem } from '../meny/menuApi'
+import { OptionPicker } from './OptionPicker'
 import {
   MAX_LINES,
   MAX_ORDER_ORE,
@@ -19,22 +33,26 @@ import {
   createOrder,
   MENU_ITEM_REMOVED,
   getOrdering,
+  isTableQrLink,
+  isGiftCardError,
+  knownOrderError,
   kronor,
   loadCart,
   loadLineNotes,
   lineExtras,
+  lineKey,
   LINE_TEXT_MAX,
+  parseLineKey,
   saveLineNotes,
   orderErrorMessage,
   rememberToken,
   saveCart,
   stepQuantity,
-  tableCodeFrom,
-  tableTitle,
   vatBreakdown,
   vatRate,
 } from './orderApi'
-import type { Cart, LineNotes, OrderCreated, OrderMode, OrderingState } from './orderApi'
+import type { Cart, LineNotes, OptionPick, OrderCreated, OrderingState } from './orderApi'
+import KassanPage from './KassanPage'
 import { checkCode, codeErrorMessage, discounted, normalizeCode } from '../erbjudande/offerApi'
 import type { CodeTerms } from '../erbjudande/offerApi'
 import { useStickyCart } from '../../shared/useStickyCart'
@@ -43,6 +61,7 @@ import type { PayStatus } from '../../shared/payment/PaymentTicket'
 import { GuestDataNotice } from '../../shared/GuestDataNotice'
 import { MarketingConsent, NO_CONSENT, consentFields } from '../../shared/MarketingConsent'
 import type { ConsentChoice } from '../../shared/MarketingConsent'
+import { SkelDishes } from '../../shared/Skeleton'
 import { formatPhoneNational } from '../../shared/phone'
 
 const STEPS = [{ label: 'Varukorg' }, { label: 'Dina uppgifter' }, { label: 'Betala' }, { label: 'Klart' }]
@@ -70,17 +89,23 @@ const STEP_TITLE: Record<Step, string> = {
   confirm: 'Godkänn och betala',
 }
 
-/** Det som saknas i ett steg (null när steget är klart). */
-function stepError(step: Step, g: Guest): string | null {
+/** Fältet som felet gäller: det markeras (aria-invalid) och får fokus. */
+type Field = 'name' | 'phone' | 'email' | 'notes' | 'accept' | 'giftCard'
+
+const ERROR_ID = 'order-error'
+const PHONE_ID = 'order-phone'
+
+/** Det som saknas i ett steg och i vilket fält (null när steget är klart). */
+function stepError(step: Step, g: Guest): { field: Field; message: string } | null {
   if (step === 'who') {
-    if (!g.name.trim()) return 'Fyll i ditt namn.'
-    if (!normalizePhone(g.phone)) return 'Fyll i ett giltigt mobilnummer, t.ex. 070-123 45 67.'
+    if (!g.name.trim()) return { field: 'name', message: 'Fyll i ditt namn.' }
+    if (!normalizePhone(g.phone)) return { field: 'phone', message: 'Fyll i ett giltigt mobilnummer, t.ex. 070-123 45 67.' }
   }
   if (step === 'receipt') {
-    if (!validEmail(g.email)) return 'Fyll i en giltig e-postadress - kvittot skickas dit.'
-    if (g.notes.length > NOTES_MAX) return `Meddelandet får vara högst ${NOTES_MAX} tecken.`
+    if (!validEmail(g.email)) return { field: 'email', message: 'Fyll i en giltig e-postadress - kvittot skickas dit.' }
+    if (g.notes.length > NOTES_MAX) return { field: 'notes', message: `Meddelandet får vara högst ${NOTES_MAX} tecken.` }
   }
-  if (step === 'confirm' && !g.accept) return 'Godkänn villkoren för att gå vidare till betalning.'
+  if (step === 'confirm' && !g.accept) return { field: 'accept', message: 'Godkänn villkoren för att gå vidare till betalning.' }
   return null
 }
 
@@ -95,29 +120,47 @@ function ore(price: number): number {
 }
 
 /**
- * Beställ mat: gästen väljer rätter (1-20 av varje), fyller i namn, mobil och
- * e-post och betalar här på sidan (steg 3: kvittot med Stripes formulär i
- * sajtens tryck, shared/payment). Med QR-koden på bordet (?bord=<kod>) blir
- * det en beställning till bordet; annars avhämtning med sms när maten är
- * klar. Varukorgen sparas i fliken tills betalningen gått igenom, så den
- * finns kvar om gästen går tillbaka och ändrar.
+ * /bestall: avhämtning. En gammal QR-kod från ett bord (?bord=<kod>) visar
+ * bara att gästen beställer och betalar i kassan (KassanPage); beställning
+ * vid bordet finns inte.
  */
 export default function BestallPage() {
+  const { search } = useLocation()
+  return isTableQrLink(search) ? <KassanPage /> : <PickupOrder />
+}
+
+/**
+ * Beställ mat för avhämtning: gästen väljer rätter (1-20 av varje), fyller i
+ * namn, mobil och e-post och betalar här på sidan (steg 3: kvittot med
+ * Stripes formulär i sajtens tryck, shared/payment), och får ett sms när
+ * maten är klar. Varukorgen sparas i fliken tills betalningen gått igenom,
+ * så den finns kvar om gästen går tillbaka och ändrar.
+ */
+function PickupOrder() {
   const { config, location } = useSite()
   const info = useLocationInfo()
   const { search } = useLocation()
   const navigate = useNavigate()
   const locationId = location.locationId
-  const [tableCode] = useState(() => tableCodeFrom(search))
   const cancelledOrder = new URLSearchParams(search).get('avbruten')
-  const mode: OrderMode = tableCode ? 'table' : 'pickup'
 
   const [ordering, setOrdering] = useState<OrderingState | null>(null)
   const [stateError, setStateError] = useState<string | null>(null)
   const [menu, setMenu] = useState<PublicMenuItem[] | null>(null)
+  const [categories, setCategories] = useState<MenuCategoryEntry[]>(DEFAULT_CATEGORIES)
+  /** Rätten vars tillval gästen väljer just nu, och knappen som öppnade valet. */
+  const [picking, setPicking] = useState<{ dish: PublicMenuItem; from: HTMLElement } | null>(null)
   const [cart, setCart] = useState<Cart>(() => loadCart(locationId))
   const [guest, setGuest] = useState<Guest>(EMPTY_GUEST)
   const [error, setError] = useState<string | null>(null)
+  // Fältet som felet gäller; markeras så länge felet visas.
+  const [errorField, setErrorField] = useState<Field | null>(null)
+  // Räknas upp vid varje fel, så att samma fel igen ger fokus igen.
+  const [errorTick, setErrorTick] = useState(0)
+  const fieldRefs = useRef<Partial<Record<Field, HTMLInputElement | HTMLTextAreaElement | null>>>({})
+  const giftRef = useRef<HTMLDivElement>(null)
+  const [loadError, setLoadError] = useState(false)
+  const [attempt, setAttempt] = useState(0)
   const [busy, setBusy] = useState(false)
   // Beställningen är registrerad: betalningskvittot visas (steg 3).
   const [payment, setPayment] = useState<OrderCreated | null>(null)
@@ -132,21 +175,40 @@ export default function BestallPage() {
   const [code, setCode] = useState<CodeTerms | null>(null)
   const [codeError, setCodeError] = useState<string | null>(null)
   const [codeBusy, setCodeBusy] = useState(false)
+  const [giftCardCode, setGiftCardCode] = useState('')
   const [codeOpen, setCodeOpen] = useState(() => Boolean(new URLSearchParams(search).get('kod')))
 
   useEffect(() => {
     if (!isApiConfigured()) return
     let cancelled = false
-    getOrdering(locationId, tableCode)
+    getOrdering(locationId)
       .then((s) => !cancelled && setOrdering(s))
-      .catch((err: unknown) => !cancelled && setStateError(orderErrorMessage(err)))
-    getPublicMenu(locationId)
-      .then((items) => !cancelled && setMenu(items))
-      .catch(() => !cancelled && setMenu([]))
+      .catch((err: unknown) => {
+        if (cancelled) return
+        // Kända fel har ett eget svar; annars gick hämtningen fel.
+        const known = knownOrderError(err)
+        if (known) setStateError(known)
+        else setLoadError(true)
+      })
+    getPublicMenuWithCategories(locationId)
+      .then((res) => {
+        if (cancelled) return
+        setMenu(res.items)
+        setCategories(res.categories)
+      })
+      .catch(() => !cancelled && setLoadError(true))
     return () => {
       cancelled = true
     }
-  }, [locationId, tableCode])
+  }, [locationId, attempt])
+
+  /** Hämta menyn och läget igen, på plats. */
+  function retryLoad() {
+    setLoadError(false)
+    setStateError(null)
+    setMenu(null)
+    setAttempt((n) => n + 1)
+  }
 
   useEffect(() => saveCart(locationId, cart), [locationId, cart])
   const [lineNotes, setLineNotes] = useState<LineNotes>(() => loadLineNotes(locationId))
@@ -156,31 +218,68 @@ export default function BestallPage() {
   }
 
   const byId = useMemo(() => new Map((menu ?? []).map((d) => [d.menuItemId, d])), [menu])
-  // Rätter som försvunnit från menyn (eller alkohol i avhämtning) räknas inte.
+  // Rätter som försvunnit från menyn (eller alkohol, som inte säljs för avhämtning, eller
+  // tillval som inte längre finns) räknas inte. En rad = rätt + tillval.
   const lines = Object.entries(cart)
-    .map(([id, quantity]) => ({ dish: byId.get(id), quantity }))
-    .filter((l): l is { dish: PublicMenuItem; quantity: number } =>
-      Boolean(l.dish) && !(mode === 'pickup' && l.dish!.alcohol))
-  const subtotal = lines.reduce((sum, l) => sum + ore(l.dish.price) * l.quantity, 0)
+    .map(([key, quantity]) => {
+      const { menuItemId, picks: raw } = parseLineKey(key)
+      const dish = byId.get(menuItemId)
+      // Valen i menyns ordning (Storlek före Extra), som på bongen.
+      const rank = (p: OptionPick) => {
+        const g = dish?.options?.findIndex((o) => o.name === p.group) ?? -1
+        return g * 100 + (dish?.options?.[g]?.choices.findIndex((c) => c.name === p.choice) ?? 0)
+      }
+      const picks = raw.slice().sort((x, y) => rank(x) - rank(y))
+      return { key, dish, picks, quantity, unit: dish ? ore(dish.price) + optionsOre(dish, picks) : 0 }
+    })
+    .filter((l): l is { key: string; dish: PublicMenuItem; picks: OptionPick[]; quantity: number; unit: number } =>
+      Boolean(l.dish) && !l.dish!.alcohol && validPicks(l.dish!, l.picks))
+  const subtotal = lines.reduce((sum, l) => sum + l.unit * l.quantity, 0)
   const belowMin = Boolean(code && subtotal < code.minOrderOre)
   const applied = code && !belowMin ? code : null
   const total = applied
-    ? lines.reduce((sum, l) => sum + discounted(ore(l.dish.price), applied.percent) * l.quantity, 0)
+    ? lines.reduce((sum, l) => sum + discounted(l.unit, applied.percent) * l.quantity, 0)
     : subtotal
-  const groups = groupByCategory(menu ?? [])
+  const groups = groupByCategory(menu ?? [], categories)
+  // Kategoriraden markerar den kategori gästen scrollat till, som på menysidan.
+  const [activeCategory, setActiveCategory] = useState<string | null>(null)
+  const shownCategory = groups.some((g) => g.category === activeCategory) ? activeCategory : groups[0]?.category
+  /** Antal av en rätt i varukorgen, alla tillval sammanräknade. */
+  const inCart = (menuItemId: string) =>
+    lines.reduce((n, l) => n + (l.dish.menuItemId === menuItemId ? l.quantity : 0), 0)
   // Servern prövar beloppet före rabatten.
   const tooLarge = subtotal > MAX_ORDER_ORE
-  const open = Boolean(ordering?.open && ordering[mode])
-  const tableName = tableTitle(ordering?.forTable)
+  const open = Boolean(ordering?.open && ordering.pickup)
   const count = lines.reduce((n, l) => n + l.quantity, 0)
   // Utan rätter finns bara brickan.
   const step: Step = lines.length ? checkout : 'cart'
   // Stegraden: rätter -> uppgifter -> betala. Betala när sista steget är ifyllt.
   const stepAt = payment ? 3 : step === 'cart' ? 1 : step === 'confirm' && !firstGap(guest) ? 3 : 2
+  const onMenu = !payment && step === 'cart'
+
+  useEffect(() => {
+    if (!onMenu || groups.length < 2 || typeof IntersectionObserver === 'undefined') return
+    const io = new IntersectionObserver(
+      (entries) => {
+        const top = entries.filter((e) => e.isIntersecting).sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0]
+        if (top) setActiveCategory(top.target.getAttribute('data-category'))
+      },
+      { rootMargin: '-35% 0px -55% 0px' },
+    )
+    document.querySelectorAll('.order-menu .menu-section[data-category]').forEach((el) => io.observe(el))
+    return () => io.disconnect()
+  }, [onMenu, groups.length])
+
+  /** Visa ett fel; med ett fält markeras det och får fokus. */
+  function fail(message: string | null, field: Field | null = null) {
+    setError(message)
+    setErrorField(message ? field : null)
+    if (message) setErrorTick((n) => n + 1)
+  }
 
   /** Till ett annat steg i kassan: fokus på rubriken, och sidan står still. */
   function go(next: Step) {
-    setError(null)
+    fail(null)
     stepMoved.current = true
     setCheckout(next)
   }
@@ -202,8 +301,35 @@ export default function BestallPage() {
     window.scrollBy?.({ top: top - header - 16, behavior: reduce ? 'auto' : 'smooth' })
   }, [step, payment])
 
+  // Fältet med felet: markerat och i fokus (efter rubriken ovan, så att fältet vinner).
+  useEffect(() => {
+    // Presentkortsfältet ritas av sin egen komponent: markeras här direkt i DOM.
+    const gift = giftRef.current?.querySelector('input')
+    if (gift) {
+      if (errorField === 'giftCard') {
+        gift.setAttribute('aria-invalid', 'true')
+        gift.setAttribute('aria-describedby', ERROR_ID)
+      } else {
+        gift.removeAttribute('aria-invalid')
+        gift.removeAttribute('aria-describedby')
+      }
+    }
+    if (!errorField) return
+    const el = errorField === 'giftCard'
+      ? gift
+      : errorField === 'phone' ? document.getElementById(PHONE_ID) : fieldRefs.current[errorField]
+    el?.focus()
+  }, [errorField, errorTick, step])
+
+  /** Markeringen för ett fält med fel. */
+  const invalid = (field: Field) =>
+    error && errorField === field ? { 'aria-invalid': true as const, 'aria-describedby': ERROR_ID } : {}
+  const fieldRef = (field: Field) => (el: HTMLInputElement | HTMLTextAreaElement | null) => {
+    fieldRefs.current[field] = el
+  }
+
   function change(id: string, delta: number) {
-    setError(null)
+    fail(null)
     setCart((prev) => {
       const next = { ...prev }
       const quantity = stepQuantity(prev[id] ?? 0, delta)
@@ -288,7 +414,7 @@ export default function BestallPage() {
     if (step === 'confirm') return void submit()
     if (!lines.length || tooLarge || !open) return
     const problem = stepError(step, guest)
-    if (problem) return setError(problem)
+    if (problem) return fail(problem.message, problem.field)
     go(STEP_ORDER[STEP_ORDER.indexOf(step) + 1])
   }
 
@@ -297,21 +423,25 @@ export default function BestallPage() {
   }
 
   async function submit() {
-    setError(null)
-    if (!lines.length) return setError('Lägg till något från menyn först.')
+    fail(null)
+    if (!lines.length) return fail('Lägg till något från menyn först.')
     const gap = firstGap(guest)
     if (gap) {
-      const problem = stepError(gap, guest)
+      const problem = stepError(gap, guest)!
       if (gap !== step) go(gap)
-      return setError(problem)
+      return fail(problem.message, problem.field)
     }
     setBusy(true)
     try {
       const created = await createOrder({
         locationId,
-        mode,
-        ...(tableCode ? { tableCode } : {}),
-        items: lines.map((l) => ({ menuItemId: l.dish.menuItemId, quantity: l.quantity, ...lineExtras(lineNotes[l.dish.menuItemId]) })),
+        mode: 'pickup',
+        items: lines.map((l) => ({
+          menuItemId: l.dish.menuItemId,
+          quantity: l.quantity,
+          ...(l.picks.length ? { options: l.picks } : {}),
+          ...lineExtras(lineNotes[l.key]),
+        })),
         name: guest.name.trim(),
         phone: guest.phone.trim(),
         email: guest.email.trim(),
@@ -319,31 +449,43 @@ export default function BestallPage() {
         language: 'sv',
         acceptTerms: true,
         ...(applied ? { discountCode: applied.code } : {}),
+        ...(giftCardCode.trim() ? { giftCardCode: giftCardCode.trim() } : {}),
         ...consentFields(guest.consent, config.privacy, marketing),
         embedded: true,
       })
       rememberToken(created.orderId, created.statusToken)
+      if (created.chargedAmount === 0) {
+        // Presentkortet täckte allt: beställningen är redan betald och går till köket.
+        done(created)
+        return
+      }
       stepMoved.current = true
       setPayStatus({ ready: false, busy: false, paid: false })
       setPayment(created)
       setBusy(false)
     } catch (err) {
-      setError(orderErrorMessage(err))
+      fail(orderErrorMessage(err), isGiftCardError(err) ? 'giftCard' : null)
       if (err instanceof Error && /^discount_/.test(err.message)) setCode(null)
-      if (err instanceof Error && err.message === 'menu_item_unavailable') {
+      if (err instanceof Error && (err.message === 'menu_item_unavailable' || /^option_/.test(err.message))) {
         // En rätt har gått ut eller stängts av sedan menyn hämtades: hämta om
         // menyn så att rätten försvinner ur varukorgen.
         // Bara när en rätt verkligen plockats bort sägs det; annars gäller
         // den neutrala texten.
-        await getPublicMenu(locationId)
-          .then((items) => {
+        await getPublicMenuWithCategories(locationId)
+          .then(({ items, categories: fresh }) => {
             setMenu(items)
-            const ids = new Set(items.map((d) => d.menuItemId))
-            if (Object.keys(cart).some((id) => !ids.has(id))) {
-              setCart((prev) => Object.fromEntries(Object.entries(prev).filter(([id]) => ids.has(id))))
+            setCategories(fresh)
+            const dishes = new Map(items.map((d) => [d.menuItemId, d]))
+            const keep = (key: string) => {
+              const { menuItemId, picks } = parseLineKey(key)
+              const dish = dishes.get(menuItemId)
+              return Boolean(dish && validPicks(dish, picks))
+            }
+            if (Object.keys(cart).some((key) => !keep(key))) {
+              setCart((prev) => Object.fromEntries(Object.entries(prev).filter(([key]) => keep(key))))
               // Tillbaka till brickan, så att gästen ser vad som ändrats.
               go('cart')
-              setError(MENU_ITEM_REMOVED)
+              fail(MENU_ITEM_REMOVED)
             }
           })
           .catch(() => undefined)
@@ -352,12 +494,16 @@ export default function BestallPage() {
     }
   }
 
-  const paid = useCallback(() => {
-    if (!payment) return
+  /** Betald: varukorgen töms och gästen följer beställningen på statussidan. */
+  const done = useCallback((order: OrderCreated) => {
     clearCart(locationId)
     setLineNotes({})
-    navigate(`/bestallning/${encodeURIComponent(payment.locationId)}/${encodeURIComponent(payment.orderId)}`)
-  }, [payment, locationId, navigate])
+    navigate(`/bestallning/${encodeURIComponent(order.locationId)}/${encodeURIComponent(order.orderId)}`)
+  }, [locationId, navigate])
+
+  const paid = useCallback(() => {
+    if (payment) done(payment)
+  }, [payment, done])
 
   /** Tillbaka till varukorgen: beställningen som inte betalades går ut av sig själv. */
   function back() {
@@ -366,28 +512,28 @@ export default function BestallPage() {
     setPayment(null)
   }
 
-  // Summan som betalas: serverns belopp när beställningen finns, annars sidans.
-  const payTotal = payment ? payment.totalAmount : total
+  // Summan som betalas: serverns belopp när beställningen finns (minus presentkortet), annars sidans.
+  const payTotal = payment ? payment.chargedAmount ?? payment.totalAmount : total
+  const gift = payment?.giftCard
   const vat = vatBreakdown(lines.map((l) => ({
-    rate: vatRate(Boolean(l.dish.alcohol), mode),
-    total: (applied ? discounted(ore(l.dish.price), applied.percent) : ore(l.dish.price)) * l.quantity,
+    rate: vatRate(Boolean(l.dish.alcohol), 'pickup'),
+    total: (applied ? discounted(l.unit, applied.percent) : l.unit) * l.quantity,
   })))
-  const place = mode === 'table'
-    ? (tableName ?? 'Ditt bord')
-    : `Hämtas hos ${config.tenant.name}${location.name ? `, ${location.name}` : ''}`
+  const place = `Hämtas hos ${config.tenant.name}${location.name ? `, ${location.name}` : ''}`
 
   /** Sammanfattningen till höger (och i "Visa beställning" på mobilen). */
   const summary = (
     <>
       <ul className="sum-lines">
-        {lines.map(({ dish, quantity }) => (
-          <li key={dish.menuItemId}>
-            <Plate src={menuImageUrl(dish.imageKey)} name={dish.name} size="sm" />
+        {lines.map(({ key, dish, picks, quantity, unit }) => (
+          <li key={key}>
+            <Plate src={menuImageUrl(dish.imageKey)} position={menuImagePosition(dish.imageFocus)} name={dish.name} size="sm" />
             <span className="sum-line-text">
               <span className="sum-line-name">{dish.name}</span>
-              <span className="sum-line-qty">{kronor(ore(dish.price))} × {quantity}</span>
+              {picks.length > 0 && <span className="sum-line-options">{picks.map((p) => p.choice).join(', ')}</span>}
+              <span className="sum-line-qty">{kronor(unit)} × {quantity}</span>
             </span>
-            <span className="sum-line-price">{kronor(ore(dish.price) * quantity)}</span>
+            <span className="sum-line-price">{kronor(unit * quantity)}</span>
           </li>
         ))}
       </ul>
@@ -395,31 +541,13 @@ export default function BestallPage() {
         <div><dt>Delsumma</dt><dd>{kronor(subtotal)}</dd></div>
         {applied && <div><dt>Rabatt {applied.percent} % ({applied.code})</dt><dd>-{kronor(subtotal - total)}</dd></div>}
         {vat.map((v) => <div key={v.rate}><dt>Varav moms {v.rate} %</dt><dd>{kronor(v.vat)}</dd></div>)}
+        {gift && <div><dt>Presentkort ****{gift.last4}</dt><dd>-{kronor(gift.debitedOre)}</dd></div>}
       </dl>
       <div className="sum-total"><span>Totalt</span><span>{kronor(payTotal)}</span></div>
     </>
   )
 
-  const crumbs = (
-    <ol className="crumbs" aria-label={`Beställning: steg ${stepAt} av ${STEPS.length}`}>
-      {STEPS.map((s, i) => {
-        const n = i + 1
-        const state = n < stepAt ? 'done' : n === stepAt ? 'current' : 'next'
-        return (
-          <li key={s.label} className={`crumb is-${state}`} aria-current={state === 'current' ? 'step' : undefined}>
-            {n === 1 && state === 'done' && !payment ? (
-              <button type="button" className="crumb-link" onClick={() => go('cart')}>{s.label}</button>
-            ) : (
-              <span>{state === 'done' && <span className="sr-only">Klart: </span>}{s.label}</span>
-            )}
-            {n < STEPS.length && (
-              <svg className="crumb-sep" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3.5 10.5 8 6 12.5" /></svg>
-            )}
-          </li>
-        )
-      })}
-    </ol>
-  )
+  const crumbs = <FlowSteps steps={STEPS} current={stepAt} label="Beställning" />
 
   if (payment || step !== 'cart') {
     const formId = payment ? 'order-pay' : 'order-checkout'
@@ -430,6 +558,12 @@ export default function BestallPage() {
       : step === 'confirm'
         ? busy ? <><span className="spinner" aria-hidden="true" />Skickar beställningen…</> : `Till betalning · ${kronor(total)}`
         : <>Fortsätt<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7" /></svg></>
+    // Ett klick tillbaka till varukorgen från alla kassasteg före betalningen.
+    const editCart = !payment && (
+      <button type="button" className="checkout-back" disabled={busy} onClick={() => go('cart')}>
+        Ändra varukorgen
+      </button>
+    )
     return (
       <div className="checkout" ref={headRef}>
         <header className="checkout-bar">
@@ -446,7 +580,7 @@ export default function BestallPage() {
             <strong>{kronor(payTotal)}</strong>
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
           </summary>
-          <div className="checkout-peek-body">{summary}</div>
+          <div className="checkout-peek-body">{summary}{editCart}</div>
         </details>
 
         <div className="checkout-grid">
@@ -467,8 +601,8 @@ export default function BestallPage() {
                   <h2 id="checkout-pay" className="checkout-sub">Betala med</h2>
                   <PaymentPanel
                     publishableKey={config.stripe.publishableKey}
-                    stripeAccount={payment.stripeAccount}
-                    clientSecret={payment.clientSecret}
+                    stripeAccount={payment.stripeAccount ?? ''}
+                    clientSecret={payment.clientSecret ?? ''}
                     formId={formId}
                     onStatus={setPayStatus}
                     onPaid={paid}
@@ -492,15 +626,16 @@ export default function BestallPage() {
                     <>
                       <label className="booking-field">
                         <span>Namn</span>
-                        <input autoComplete="name" value={guest.name}
+                        <input autoComplete="name" value={guest.name} ref={fieldRef('name')} {...invalid('name')}
                           onChange={(e) => setGuest({ ...guest, name: e.target.value })} />
                       </label>
                       <label className="booking-field">
                         <span>Mobilnummer</span>
                         <span className="field-hint">
-                          {mode === 'pickup' ? 'Vi sms:ar när maten lagas och när den är klar.' : 'Vi sms:ar när maten lagas.'}
+                          Vi sms:ar när maten lagas och när den är klar.
                         </span>
-                        <PhoneInput value={guest.phone} onChange={(phone) => setGuest({ ...guest, phone })} />
+                        <PhoneInput value={guest.phone} onChange={(phone) => setGuest({ ...guest, phone })}
+                          id={PHONE_ID} {...invalid('phone')} />
                       </label>
                     </>
                   )}
@@ -510,14 +645,14 @@ export default function BestallPage() {
                       <label className="booking-field">
                         <span>E-post</span>
                         <span className="field-hint">Hit skickar vi kvittot.</span>
-                        <input type="email" autoComplete="email" value={guest.email}
-                          onChange={(e) => setGuest({ ...guest, email: e.target.value })} />
+                        <input type="email" autoComplete="email" value={guest.email} ref={fieldRef('email')}
+                          {...invalid('email')} onChange={(e) => setGuest({ ...guest, email: e.target.value })} />
                       </label>
                       <label className="booking-field">
                         <span>Allergier eller önskemål</span>
                         <span className="field-hint">Valfritt, till exempel nötallergi.</span>
-                        <textarea rows={3} maxLength={NOTES_MAX} value={guest.notes}
-                          onChange={(e) => setGuest({ ...guest, notes: e.target.value })} />
+                        <textarea rows={3} maxLength={NOTES_MAX} value={guest.notes} ref={fieldRef('notes')}
+                          {...invalid('notes')} onChange={(e) => setGuest({ ...guest, notes: e.target.value })} />
                       </label>
                     </>
                   )}
@@ -526,13 +661,16 @@ export default function BestallPage() {
                     <fieldset className="order-fields" disabled={busy}>
                       <legend className="sr-only">{STEP_TITLE.confirm}</legend>
                       <label className="booking-check">
-                        <input type="checkbox" checked={guest.accept}
+                        <input type="checkbox" checked={guest.accept} ref={fieldRef('accept')} {...invalid('accept')}
                           onChange={(e) => setGuest({ ...guest, accept: e.target.checked })} />
                         <span>
                           Jag förstår att beställningen inte kan ändras efter betalning. Avbryter restaurangen får
                           jag pengarna tillbaka.
                         </span>
                       </label>
+                      <div ref={giftRef}>
+                        <Slot id="bestall.checkout.giftcard" props={{ value: giftCardCode, onChange: setGiftCardCode, totalOre: total }} />
+                      </div>
                       <MarketingConsent value={guest.consent} onChange={(consent) => setGuest({ ...guest, consent })} />
                       <details className="checkout-privacy">
                         <summary>
@@ -552,7 +690,7 @@ export default function BestallPage() {
                   </p>
                 )}
                 {error && !tooLarge && (
-                  <p className="notice error" role="alert">
+                  <p className="notice error" role="alert" id={ERROR_ID}>
                     {error}
                   </p>
                 )}
@@ -569,6 +707,7 @@ export default function BestallPage() {
             <div className="checkout-side-sum">
               <h2 className="checkout-sub">Din beställning</h2>
               {summary}
+              {editCart}
             </div>
             {!payStatus.paid && (
               <div className="checkout-cta">
@@ -587,16 +726,9 @@ export default function BestallPage() {
   return (
     <>
       <section className="page-head" ref={headRef}>
-        <h1>{mode === 'table' ? 'Beställ till bordet' : 'Beställ för avhämtning'}</h1>
-        {mode === 'table' && tableName && (
-          <p className="order-table-chip" aria-label={`Ditt bord: ${tableName}`}>
-            {tableName}
-          </p>
-        )}
+        <h1>Beställ för avhämtning</h1>
         <p className="page-lede">
-          {mode === 'table'
-            ? `Välj, betala i mobilen - vi serverar vid ${tableName ? (/^bord /i.test(tableName) ? `bord ${tableName.slice(5)}` : tableName) : 'ditt bord'}.`
-            : `Välj, betala här och hämta hos ${config.tenant.name}. Du får ett sms när maten är klar.`}
+          {`Välj, betala här och hämta hos ${config.tenant.name}. Du får ett sms när maten är klar.`}
         </p>
         {crumbs}
       </section>
@@ -611,53 +743,77 @@ export default function BestallPage() {
           {stateError}
         </p>
       )}
+      {loadError && (
+        <div className="notice error notice--stack" role="alert">
+          <p>
+            Vi kunde inte hämta menyn just nu. Försök igen
+            {info.phone ? <>, eller ring {config.tenant.name} på <PhoneLink phone={info.phone} /></> : null}.
+          </p>
+          <span data-bq-theme="restaurant">
+            <Button variant="primary" size="sm" onClick={retryLoad}>Försök igen</Button>
+          </span>
+        </div>
+      )}
       {ordering && !open && (
         <p className="notice" role="status">
-          {ordering.open && !ordering[mode]
-            ? mode === 'table'
-              ? 'Beställning vid bordet är inte påslagen - fråga personalen.'
-              : 'Avhämtning går inte att beställa online just nu.'
+          {ordering.open && !ordering.pickup
+            ? 'Avhämtning går inte att beställa online just nu.'
             : closedMessage(ordering, formatPhoneNational(info.phone))}
         </p>
       )}
       {ordering?.open && ordering.lastOrderAt && (
         <p className="order-hint">
           Sista beställning kl. {ordering.lastOrderAt}
-          {mode === 'pickup' && ordering.prepMinutes ? ` · klar ca ${ordering.prepMinutes} min efter betalning` : ''}
+          {ordering.prepMinutes ? ` · klar ca ${ordering.prepMinutes} min efter betalning` : ''}
         </p>
       )}
 
       <div className="order-layout">
         <div className="order-menu">
-          {menu === null && <p className="notice" role="status">Hämtar menyn…</p>}
+          {menu === null && !loadError && <SkelDishes />}
           {groups.length > 1 && (
             <nav className="chip-rail" aria-label="Kategorier">
               {groups.map((g) => (
-                <a key={g.category} className="chip" href={`#bestall-${g.category}`}>
-                  {CATEGORY_LABEL[g.category]}
+                <a key={g.category} className={`chip${shownCategory === g.category ? ' is-active' : ''}`}
+                  aria-current={shownCategory === g.category ? 'true' : undefined}
+                  href={`#bestall-${g.category}`} onClick={() => setActiveCategory(g.category)}>
+                  {g.label}
                   <span className="chip-count">{g.items.length}</span>
                 </a>
               ))}
             </nav>
           )}
           {groups.map((group) => (
-            <section key={group.category} id={`bestall-${group.category}`} className="menu-section" aria-label={CATEGORY_LABEL[group.category]}>
-              <h2 className="menu-section-title">{CATEGORY_LABEL[group.category]}</h2>
+            <section key={group.category} id={`bestall-${group.category}`} className="menu-section" aria-label={group.label}
+              data-category={group.category}>
+              <h2 className="menu-section-title">{group.label}</h2>
               <ul className="dish-list">
                 {group.items.map((dish) => {
-                  const quantity = cart[dish.menuItemId] ?? 0
-                  const blocked = mode === 'pickup' && dish.alcohol
+                  const hasOptions = Boolean(dish.options?.length)
+                  const quantity = hasOptions ? inCart(dish.menuItemId) : cart[dish.menuItemId] ?? 0
+                  const blocked = dish.alcohol
+                  const allergens = allergenText(dish.allergens)
                   return (
                     <li className={`dish dish--order${quantity ? ' is-in-cart' : ''}`} key={dish.menuItemId} data-dish={dish.menuItemId}>
-                      <Plate src={menuImageUrl(dish.imageKey)} name={dish.name} />
+                      <Plate src={menuImageUrl(dish.imageKey)} position={menuImagePosition(dish.imageFocus)} name={dish.name} />
                       <div className="dish-text">
                         <h3 className="dish-name">{dish.name}</h3>
                         {dish.description && <p className="dish-desc">{dish.description}</p>}
-                        <span className="dish-price">{kronor(ore(dish.price))}</span>
+                        {allergens && <p className="dish-allergens">{allergens}</p>}
+                        <span className="dish-price">{hasOptions ? `från ${kronor(ore(dish.price))}` : kronor(ore(dish.price))}</span>
                       </div>
                       <div className="dish-action">
                         {blocked ? (
-                          <span className="order-only-table">Bara vid bordet</span>
+                          <span className="order-no-pickup">Ej för avhämtning</span>
+                        ) : hasOptions ? (
+                          <span className="dish-option-action">
+                            {quantity > 0 && <span className="dish-option-count">{quantity} i brickan</span>}
+                            <button type="button" className="add-btn" disabled={!open}
+                              aria-label={`Välj tillval och lägg till ${dish.name}`}
+                              onClick={(e) => setPicking({ dish, from: e.currentTarget })}>
+                              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+                            </button>
+                          </span>
                         ) : quantity === 0 ? (
                           <button type="button" className="add-btn" disabled={!open}
                             aria-label={`Lägg till ${dish.name}`} onClick={(e) => add(dish.menuItemId, e.currentTarget)}>
@@ -689,8 +845,8 @@ export default function BestallPage() {
           <div className="tray-head">
             <h2 className="checkout-title" ref={titleRef} tabIndex={-1}>{STEP_TITLE.cart}</h2>
             <span className="tray-plates" aria-hidden="true" ref={trayRef}>
-              {lines.slice(0, 5).map(({ dish }) => (
-                <Plate key={dish.menuItemId} src={menuImageUrl(dish.imageKey)} name={dish.name} size="sm" />
+              {lines.slice(0, 5).map(({ key, dish }) => (
+                <Plate key={key} src={menuImageUrl(dish.imageKey)} position={menuImagePosition(dish.imageFocus)} name={dish.name} size="sm" />
               ))}
             </span>
           </div>
@@ -701,24 +857,27 @@ export default function BestallPage() {
           <form className="order-form" onSubmit={next} noValidate>
             <div className="checkout-step">
                 <ul className="cart-list">
-                  {lines.map(({ dish, quantity }) => (
-                    <li key={dish.menuItemId}>
-                      <span className="cart-item-name" key={quantity}>{quantity}&nbsp;×&nbsp;{dish.name}</span>
+                  {lines.map(({ key, dish, picks, quantity, unit }, i) => (
+                    <li key={key}>
+                      <span className="cart-item-name" key={quantity}>
+                        {quantity}&nbsp;×&nbsp;{dish.name}
+                        {picks.length > 0 && <span className="cart-item-options">{picks.map((p) => p.choice).join(', ')}</span>}
+                      </span>
                       <span className="cart-qty">
                         <button type="button" aria-label={`En ${dish.name} mindre`}
-                          onClick={() => change(dish.menuItemId, -1)}>−</button>
+                          onClick={() => change(key, -1)}>−</button>
                         <button type="button" aria-label={`En ${dish.name} till`}
-                          disabled={quantity >= MAX_QUANTITY} onClick={() => change(dish.menuItemId, 1)}>+</button>
+                          disabled={quantity >= MAX_QUANTITY} onClick={() => change(key, 1)}>+</button>
                       </span>
-                      <span className="cart-item-price">{kronor(ore(dish.price) * quantity)}</span>
-                      <details className="cart-line-notes" open={Boolean(lineNotes[dish.menuItemId]?.note || lineNotes[dish.menuItemId]?.allergy) || undefined}>
+                      <span className="cart-item-price">{kronor(unit * quantity)}</span>
+                      <details className="cart-line-notes" open={Boolean(lineNotes[key]?.note || lineNotes[key]?.allergy) || undefined}>
                         <summary>Önskemål eller allergi?</summary>
-                        <label htmlFor={`line-note-${dish.menuItemId}`}>Önskemål</label>
-                        <input id={`line-note-${dish.menuItemId}`} maxLength={LINE_TEXT_MAX} placeholder="Till exempel ingen lök"
-                          value={lineNotes[dish.menuItemId]?.note ?? ''} onChange={(e) => setLineNote(dish.menuItemId, 'note', e.target.value)} />
-                        <label htmlFor={`line-allergy-${dish.menuItemId}`}>Allergi</label>
-                        <input id={`line-allergy-${dish.menuItemId}`} maxLength={LINE_TEXT_MAX} placeholder="Till exempel jordnötsallergi"
-                          value={lineNotes[dish.menuItemId]?.allergy ?? ''} onChange={(e) => setLineNote(dish.menuItemId, 'allergy', e.target.value)} />
+                        <label htmlFor={`line-note-${i}`}>Önskemål</label>
+                        <input id={`line-note-${i}`} maxLength={LINE_TEXT_MAX} placeholder="Till exempel ingen lök"
+                          value={lineNotes[key]?.note ?? ''} onChange={(e) => setLineNote(key, 'note', e.target.value)} />
+                        <label htmlFor={`line-allergy-${i}`}>Allergi</label>
+                        <input id={`line-allergy-${i}`} maxLength={LINE_TEXT_MAX} placeholder="Till exempel jordnötsallergi"
+                          value={lineNotes[key]?.allergy ?? ''} onChange={(e) => setLineNote(key, 'allergy', e.target.value)} />
                       </details>
                     </li>
                   ))}
@@ -796,6 +955,18 @@ export default function BestallPage() {
           <strong>Visa beställning</strong>
           <span className="order-mobile-bar-total">{kronor(total)}</span>
         </a>
+      )}
+
+      {picking && (
+        <OptionPicker
+          dish={picking.dish}
+          onClose={() => setPicking(null)}
+          onAdd={(picks) => {
+            const { dish, from } = picking
+            setPicking(null)
+            add(lineKey(dish.menuItemId, picks), from)
+          }}
+        />
       )}
     </>
   )

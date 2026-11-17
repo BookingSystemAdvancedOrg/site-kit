@@ -1,6 +1,6 @@
 /**
  * Allt som restaurangens webbplats sparar i gästens webbläsare, på ett
- * ställe, inklusive det tredje parter (Stripe, AWS WAF) sätter.
+ * ställe, inklusive det tredje parter (Stripe, AWS) sätter.
  *
  * Det här är facit: koden hämtar sina nyckelnamn härifrån, integritets-
  * policyns tabell ritas härifrån, och ett test (storageRegistry.test.ts)
@@ -14,6 +14,8 @@
  * analys- eller marknadsföringscookies. Lägger någon till sådana måste det
  * här omprövas först: då krävs samtycke innan de sätts.
  */
+
+import { GIFT_CARD_PURCHASE_KEY, TICKET_PURCHASE_KEY, WAITLIST_TOKEN_PREFIX } from './contracts'
 
 export type StorageKind = 'cookie' | 'localStorage' | 'sessionStorage' | 'ingen'
 export type StorageCategory = 'nödvändig' | 'funktionell' | 'analys' | 'marknadsföring'
@@ -33,11 +35,13 @@ export interface StorageEntry {
 export const LOCATION_KEY_PREFIX = 'site-location:'
 export const SLUG_KEY = 'site-tenant-slug'
 export const CART_KEY_PREFIX = 'order-cart:'
-export const TABLE_KEY = 'order-table-code'
 export const ORDER_TOKEN_PREFIX = 'order-token:'
 export const CATERING_TOKEN_PREFIX = 'catering-token:'
 export const OFFER_CARD_KEY = 'offer-card'
 export const THEME_KEY = 'booqy-theme'
+export const SOUND_KEY = 'booqy-sound'
+// Presentkort, kö och biljetter: nyckelnamnen kommer från kontraktet (application/contracts/booqy.yaml).
+export { GIFT_CARD_PURCHASE_KEY, TICKET_PURCHASE_KEY, WAITLIST_TOKEN_PREFIX }
 
 export const STORAGE_REGISTRY: readonly StorageEntry[] = [
   {
@@ -57,6 +61,14 @@ export const STORAGE_REGISTRY: readonly StorageEntry[] = [
     category: 'nödvändig',
   },
   {
+    name: SOUND_KEY,
+    kind: 'localStorage',
+    setBy: 'Webbplatsen',
+    purpose: 'Ditt val att stänga av eller slå på klickljudet (knappen Klickljud i sidfoten). Sätts bara om du trycker på den; annars är ljudet på.',
+    lifetime: 'Tills du rensar webbläsaren',
+    category: 'nödvändig',
+  },
+  {
     name: `${CART_KEY_PREFIX}{plats}`,
     kind: 'sessionStorage',
     setBy: 'Webbplatsen',
@@ -64,15 +76,6 @@ export const STORAGE_REGISTRY: readonly StorageEntry[] = [
     lifetime: 'Tills fliken stängs',
     category: 'nödvändig',
     where: 'Beställning',
-  },
-  {
-    name: TABLE_KEY,
-    kind: 'sessionStorage',
-    setBy: 'Webbplatsen',
-    purpose: 'Bordet från QR-koden du skannade, så att beställningen kommer till rätt bord.',
-    lifetime: 'Tills fliken stängs',
-    category: 'nödvändig',
-    where: 'Beställning vid bordet',
   },
   {
     name: `${ORDER_TOKEN_PREFIX}{beställning}`,
@@ -108,16 +111,16 @@ export const STORAGE_REGISTRY: readonly StorageEntry[] = [
     purpose: 'Skydd mot kortbedrägerier när du betalar eller lämnar en kortgaranti. Sätts bara på de stegen.',
     lifetime: '1 år respektive 30 minuter',
     category: 'nödvändig',
-    where: 'Kortgaranti, betalning av beställning och catering',
+    where: 'Kortgaranti, betalning av beställning, catering, presentkort och evenemang',
   },
   {
     name: 'aws-waf-token',
     kind: 'cookie',
     setBy: 'Booqy (AWS)',
-    purpose: 'Säkerhetskontroll som visar att en bokning, beställning eller förfrågan skickas av en människa och inte en robot. Sätts först när du skickar ett formulär.',
+    purpose: 'Säkerhetskontroll: visar att en bokning, beställning eller förfrågan skickas från en riktig webbläsare och inte av en robot. Sätts bara när ett formulär skickas.',
     lifetime: 'Några minuter, förnyas medan sidan är öppen',
     category: 'nödvändig',
-    where: 'Bokning, beställning, catering och välkomsterbjudandet',
+    where: 'Bokning, beställning, catering, presentkort, evenemang, kö och välkomsterbjudandet',
   },
   {
     name: OFFER_CARD_KEY,
@@ -127,6 +130,33 @@ export const STORAGE_REGISTRY: readonly StorageEntry[] = [
     lifetime: 'Tills fliken stängs',
     category: 'nödvändig',
     where: 'Välkomsterbjudande',
+  },
+  {
+    name: GIFT_CARD_PURCHASE_KEY,
+    kind: 'sessionStorage',
+    setBy: 'Webbplatsen',
+    purpose: 'Kommer ihåg ditt presentkortsköp medan kortbetalningen bekräftas, så att tack-sidan kan visa det.',
+    lifetime: 'Tills köpet är klart eller fliken stängs',
+    category: 'nödvändig',
+    where: 'Presentkort',
+  },
+  {
+    name: `${WAITLIST_TOKEN_PREFIX}{plats}`,
+    kind: 'localStorage',
+    setBy: 'Webbplatsen',
+    purpose: 'Sparar din plats i kön så att du ser när ditt bord är klart.',
+    lifetime: 'Till slutet av dagen du ställde dig i kö',
+    category: 'nödvändig',
+    where: 'Kö',
+  },
+  {
+    name: TICKET_PURCHASE_KEY,
+    kind: 'sessionStorage',
+    setBy: 'Webbplatsen',
+    purpose: 'Kommer ihåg ditt biljettköp medan kortbetalningen bekräftas, så att biljettsidan kan visas.',
+    lifetime: 'Tills köpet är klart eller fliken stängs',
+    category: 'nödvändig',
+    where: 'Evenemang',
   },
   {
     name: 'Besöksstatistik',

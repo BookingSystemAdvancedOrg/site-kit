@@ -40,7 +40,8 @@
     "typecheck": "tsc -p tsconfig.json",
     "lint": "oxlint",
     "test": "vitest run",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm run build",
+    "sync:check": "node scripts/sync-check.mjs"
   },
   "peerDependencies": {
     "react": "^19.2.0",

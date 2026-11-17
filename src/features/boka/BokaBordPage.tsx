@@ -2,7 +2,9 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { useSite } from '../../shared/SiteContext'
+import { Slot } from '../../shared/slots'
 import { PhoneInput } from '../../shared/PhoneInput'
+import { Select } from '../../shared/Select'
 import { useLocationInfo } from '../../shared/useLocationInfo'
 import AddToCalendar from '../../shared/AddToCalendar'
 import { bookingEvent, restaurantName } from '../../shared/calendar'
@@ -63,13 +65,18 @@ const EMPTY_GUEST: Guest = {
   name: '', email: '', phone: '', notes: '', consent: NO_CONSENT, acceptTerms: false,
 }
 
-function guestError(g: Guest): string | null {
-  if (!g.name.trim()) return 'Fyll i ditt namn.'
-  if (!validEmail(g.email)) return 'Fyll i en giltig e-postadress.'
-  if (!normalizePhone(g.phone)) return 'Fyll i ett giltigt telefonnummer, t.ex. 070-123 45 67.'
-  if (!g.acceptTerms) return 'Du behöver godkänna bokningsvillkoren.'
+type GuestField = 'name' | 'email' | 'phone' | 'acceptTerms'
+
+/** Fältet som är fel och texten om det, eller null. */
+function guestError(g: Guest): { field: GuestField; message: string } | null {
+  if (!g.name.trim()) return { field: 'name', message: 'Fyll i ditt namn.' }
+  if (!validEmail(g.email)) return { field: 'email', message: 'Fyll i en giltig e-postadress.' }
+  if (!normalizePhone(g.phone)) return { field: 'phone', message: 'Fyll i ett giltigt telefonnummer, t.ex. 070-123 45 67.' }
+  if (!g.acceptTerms) return { field: 'acceptTerms', message: 'Du behöver godkänna bokningsvillkoren.' }
   return null
 }
+
+const FORM_ERROR_ID = 'booking-form-error'
 
 /** Mjuk rullning, utom för den som bett om mindre rörelse. */
 function scrollBehavior(): ScrollBehavior {
@@ -132,8 +139,8 @@ function sameTables(a: TableOption | null, b: TableOption | null): boolean {
  * gästen välja igen med uppdaterad ledighet.
  *
  * Avvikande dagar (stängt, andra tider, ingen onlinebokning) förklaras vid
- * tiderna och syns i datumlistan. Säkerhetskontrollen (AWS WAF) körs i
- * bakgrunden när bordet hålls (shared/botCheck.ts), utan någon ruta.
+ * tiderna och syns i datumlistan. Säkerhetskontrollen (AWS WAF) sköts i
+ * bakgrunden av shared/api.ts, utan någon ruta att klicka i.
  *
  * Kortgaranti: kräver platsen kort för sällskapets storlek visas villkoren
  * innan gästen bokar, och efter bokningen (status "pending") Stripes
@@ -187,6 +194,8 @@ export default function BokaBordPage() {
   const [view, setView] = useState<'2d' | '3d'>('3d')
   const [guest, setGuest] = useState<Guest>(EMPTY_GUEST)
   const [formError, setFormError] = useState<string | null>(null)
+  // Fältet som var fel vid senaste försöket (markeras och får fokus).
+  const [badField, setBadField] = useState<GuestField | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [booked, setBooked] = useState<GuestReservation | null>(null)
   const [pending, setPending] = useState<GuestReservation | null>(null)
@@ -460,7 +469,7 @@ export default function BokaBordPage() {
       : !option ? 'Välj ett bord.'
       : cardNeeded && !config.stripe.publishableKey
         ? `Onlinebokning för ${partySize} personer kräver kortgaranti, som inte är tillgänglig just nu. Ring oss på ${formatPhoneNational(info.phone) || 'restaurangen'}.`
-        : null
+      : null
     if (problem) {
       setFormError(problem)
       return
@@ -482,7 +491,7 @@ export default function BokaBordPage() {
       // inte sidfoten som sidan annars står kvar vid på en telefon.
       headRef.current?.scrollIntoView?.({ block: 'start', behavior: scrollBehavior() })
     } catch (err) {
-      setFormError(bookingErrorMessage(err))
+      setFormError(bookingErrorMessage(err, formatPhoneNational(info.phone) || undefined))
       const stale = staleSelection(err)
       if (stale) {
         // Tiden passerade 30-minutersgränsen eller bordet hann tas: välj
@@ -508,6 +517,12 @@ export default function BokaBordPage() {
     headRef.current?.scrollIntoView?.({ block: 'start', behavior: scrollBehavior() })
   }
 
+  /** Ändra gästens uppgifter; ett ändrat fält är inte längre markerat som fel. */
+  function editGuest(patch: Partial<Guest>) {
+    setGuest((g) => ({ ...g, ...patch }))
+    if (badField && badField in patch) setBadField(null)
+  }
+
   function copyLink(link: string) {
     void navigator.clipboard?.writeText(link)
     setCopied(true)
@@ -522,9 +537,12 @@ export default function BokaBordPage() {
     }
     const problem = guestError(guest)
     if (problem) {
-      setFormError(problem)
+      setFormError(problem.message)
+      setBadField(problem.field)
+      document.getElementById(`booking-${problem.field}`)?.focus()
       return
     }
+    setBadField(null)
     setSubmitting(true)
     setFormError(null)
     try {
@@ -560,7 +578,7 @@ export default function BokaBordPage() {
         restart(HOLD_EXPIRED_TEXT)
         return
       }
-      setFormError(bookingErrorMessage(err))
+      setFormError(bookingErrorMessage(err, formatPhoneNational(info.phone) || undefined))
     } finally {
       setSubmitting(false)
     }
@@ -673,8 +691,9 @@ export default function BokaBordPage() {
   return (
     <>
       <section className="page-head" ref={headRef}>
+        {info.name !== config.tenant.name && <p className="hero-kicker">{info.name}</p>}
         <h1>Boka bord</h1>
-        <p className="page-lede">Välj hur många ni är, dag och tid - sedan ert bord. {info.name !== config.tenant.name ? info.name : ''}</p>
+        <p className="page-lede">Välj hur många ni är, dag och tid - sedan ert bord.</p>
         <FlowSteps steps={steps} current={stepAt} label="Bokning" />
         {restartNotice && <p className="notice error" role="alert">{restartNotice}</p>}
       </section>
@@ -691,11 +710,15 @@ export default function BokaBordPage() {
                 disabled={partySize <= 1} onClick={() => choosePartySize(partySize - 1)}>
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14" /></svg>
               </button>
-              <select id="party-size" value={partySize} onChange={(e) => choosePartySize(Number(e.target.value))}>
-                {Array.from({ length: maxParty }, (_, i) => i + 1).map((n) => (
-                  <option key={n} value={n}>{n} {n === 1 ? 'person' : 'personer'}</option>
-                ))}
-              </select>
+              <Select
+                id="party-size"
+                value={String(partySize)}
+                onChange={(v) => choosePartySize(Number(v))}
+                options={Array.from({ length: maxParty }, (_, i) => i + 1).map((n) => ({
+                  value: String(n),
+                  label: `${n} ${n === 1 ? 'person' : 'personer'}`,
+                }))}
+              />
               <button type="button" className="party-btn" aria-label="En person till"
                 disabled={partySize >= maxParty} onClick={() => choosePartySize(partySize + 1)}>
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
@@ -756,6 +779,7 @@ export default function BokaBordPage() {
                   Prova nästa dag
                 </button>
               )}
+              <Slot id="boka.full" props={{ locationId: location.locationId }} />
             </div>
           )}
           {slotNotice?.step === 'time' && <p className="notice" role="status">{slotNotice.text}</p>}
@@ -910,15 +934,17 @@ export default function BokaBordPage() {
             <div className="booking-grid">
               <label className="booking-field">
                 <span>Namn</span>
-                <input autoComplete="name" maxLength={NAME_MAX} value={guest.name} onChange={(e) => setGuest({ ...guest, name: e.target.value })} />
+                <input id="booking-name" autoComplete="name" maxLength={NAME_MAX} value={guest.name} aria-invalid={badField === 'name' || undefined} aria-describedby={badField === 'name' ? FORM_ERROR_ID : undefined}
+                  onChange={(e) => editGuest({ name: e.target.value })} />
               </label>
               <label className="booking-field">
                 <span>E-post</span>
-                <input type="email" autoComplete="email" maxLength={EMAIL_MAX} value={guest.email} onChange={(e) => setGuest({ ...guest, email: e.target.value })} />
+                <input id="booking-email" type="email" autoComplete="email" maxLength={EMAIL_MAX} value={guest.email} aria-invalid={badField === 'email' || undefined} aria-describedby={badField === 'email' ? FORM_ERROR_ID : undefined}
+                  onChange={(e) => editGuest({ email: e.target.value })} />
               </label>
               <label className="booking-field">
                 <span>Telefon</span>
-                <PhoneInput value={guest.phone} onChange={(phone) => setGuest({ ...guest, phone })} />
+                <PhoneInput id="booking-phone" value={guest.phone} aria-invalid={badField === 'phone' || undefined} aria-describedby={badField === 'phone' ? FORM_ERROR_ID : undefined} onChange={(phone) => editGuest({ phone })} />
               </label>
               <label className="booking-field booking-field--wide">
                 <span>Meddelande till restaurangen (valfritt)</span>
@@ -928,13 +954,14 @@ export default function BokaBordPage() {
             <GuestDataNotice kind="booking" />
             {cardNeeded && terms && <GuaranteeNotice terms={terms} partySize={partySize} />}
             <label className="booking-check">
-              <input type="checkbox" checked={guest.acceptTerms} onChange={(e) => setGuest({ ...guest, acceptTerms: e.target.checked })} />
+              <input id="booking-acceptTerms" type="checkbox" checked={guest.acceptTerms} aria-invalid={badField === 'acceptTerms' || undefined} aria-describedby={badField === 'acceptTerms' ? FORM_ERROR_ID : undefined}
+                onChange={(e) => editGuest({ acceptTerms: e.target.checked })} />
               <span>
                 Jag godkänner <Link to="/bokningsvillkor" target="_blank">bokningsvillkoren</Link>.
               </span>
             </label>
             <MarketingConsent value={guest.consent} onChange={(consent) => setGuest({ ...guest, consent })} />
-            {formError && <p className="notice error" role="alert">{formError}</p>}
+            {formError && <p className="notice error" role="alert" id={FORM_ERROR_ID}>{formError}</p>}
             <button type="submit" className={`btn-primary${submitting ? ' is-busy' : ''}`} disabled={submitting}>
               {submitting
                 ? <><span className="spinner" aria-hidden="true" />{cardNeeded ? 'Förbereder kortsteget…' : 'Bokar bordet…'}</>

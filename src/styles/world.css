@@ -29,7 +29,6 @@ html {
   outline: 3px solid color-mix(in srgb, var(--accent) 70%, var(--ink));
   outline-offset: 2px;
   box-shadow: none;
-  border-radius: 6px;
 }
 
 a {
@@ -245,7 +244,7 @@ svg {
   color: var(--muted);
 }
 
-@media (max-width: 760px) {
+@media (max-width: 900px) {
   .dish-list {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -428,7 +427,7 @@ svg {
   font-variant-numeric: tabular-nums;
 }
 
-.order-only-table {
+.order-no-pickup {
   padding: 6px 12px;
   border-radius: var(--r-pill);
   background: var(--fill);
@@ -686,7 +685,7 @@ svg {
 }
 
 .booking-field input,
-.booking-field select,
+.booking-field .combo,
 .booking-field textarea {
   min-height: 52px;
   padding: 12px 16px;
@@ -699,7 +698,7 @@ svg {
 }
 
 .booking-field input:focus,
-.booking-field select:focus,
+.booking-field .combo:focus,
 .booking-field textarea:focus {
   outline: none;
   background: var(--surface);
@@ -842,7 +841,7 @@ svg {
   cursor: not-allowed;
 }
 
-.party-stepper select {
+.party-stepper .combo {
   min-width: 128px;
   min-height: 50px;
   padding: 0 12px;
@@ -1136,7 +1135,7 @@ svg {
 .floor-legend-swatch {
   width: 18px;
   height: 14px;
-  border-radius: 4px;
+  border-radius: var(--r-md);
   background: var(--surface);
   box-shadow: inset 0 0 0 1px var(--line);
 }
@@ -1270,7 +1269,6 @@ html {
   outline: 3px solid var(--ink-red);
   outline-offset: 3px;
   box-shadow: none;
-  border-radius: 2px;
 }
 
 .order-mobile-bar:focus-visible {
@@ -1299,8 +1297,9 @@ h1, h2, h3, h4 {
 .category-sidebar-kicker,
 .category-dropdown-label,
 .booking-field > span:first-child,
+.booking-field > label:first-child,
 .offer-stub-label,
-.order-only-table,
+.order-no-pickup,
 .storage-table th,
 .opening-hours-table th {
   font: 500 0.6875rem/1.3 var(--mono);
@@ -1322,7 +1321,7 @@ h1, h2, h3, h4 {
 .chip-count,
 .stepper > span,
 .cart-qty span,
-.party-stepper select,
+.party-stepper .combo,
 .order-mobile-bar-total,
 .order-mobile-bar-count,
 .offer-peek-percent,
@@ -1387,7 +1386,9 @@ h1, h2, h3, h4 {
 .booking-confirmation,
 .catering-details,
 .page-prose {
-  animation: drop 640ms var(--ease) both;
+  /* `backwards`, inte `both`: en kvarliggande transform gör kortet till
+     referens för position: fixed inuti (kalendern, knappar på mobilen). */
+  animation: drop 640ms var(--ease) backwards;
 }
 
 .booking-step:nth-of-type(2),
@@ -1488,7 +1489,7 @@ h1, h2, h3, h4 {
   max-width: 100%;
   padding: 3px 8px 2px;
   border: 2px solid currentColor;
-  border-radius: 3px;
+  border-radius: var(--r-md);
   font: 800 0.78rem/1.2 var(--mono);
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -1522,7 +1523,7 @@ h1, h2, h3, h4 {
 .chip {
   min-height: 38px;
   padding: 0 12px;
-  border-radius: 3px;
+  border-radius: var(--r-md);
   background: transparent;
   box-shadow: inset 0 0 0 1.5px var(--paper-line);
   font: 700 0.9rem/1 var(--font);
@@ -1592,7 +1593,7 @@ h1, h2, h3, h4 {
 .plate {
   --size: 76px;
   padding: 0;
-  border-radius: 3px;
+  border-radius: var(--r-md);
   background: var(--fill);
   box-shadow: none;
   overflow: hidden;
@@ -1602,7 +1603,7 @@ h1, h2, h3, h4 {
   inset: 0;
   width: 100%;
   height: 100%;
-  border-radius: 3px;
+  border-radius: var(--r-md);
 }
 
 .plate--empty::before {
@@ -1649,7 +1650,7 @@ h1, h2, h3, h4 {
 .offer-submit {
   min-height: 48px;
   padding: 0 20px;
-  border-radius: 3px;
+  border-radius: var(--r-md);
   font: 700 1rem/1 var(--font);
   font-stretch: 112%;
   letter-spacing: 0.01em;
@@ -1725,7 +1726,7 @@ h1, h2, h3, h4 {
 }
 
 .booking-field input,
-.booking-field select,
+.booking-field .combo,
 .booking-field textarea,
 .catering-dishes input,
 .cart-code-row input,
@@ -1733,7 +1734,7 @@ h1, h2, h3, h4 {
   min-height: 48px;
   padding: 10px 14px;
   border: 1.5px solid var(--paper-line);
-  border-radius: 3px;
+  border-radius: var(--r-md);
   background: var(--fill);
   box-shadow: none;
   color: var(--ink);
@@ -1742,13 +1743,13 @@ h1, h2, h3, h4 {
 }
 
 .booking-field input:hover,
-.booking-field select:hover,
+.booking-field .combo:hover,
 .booking-field textarea:hover {
   border-color: var(--muted);
 }
 
 .booking-field input:focus,
-.booking-field select:focus,
+.booking-field .combo:focus,
 .booking-field textarea:focus,
 .catering-dishes input:focus,
 .cart-code-row input:focus,
@@ -1771,15 +1772,78 @@ h1, h2, h3, h4 {
   font-size: 0.95rem;
 }
 
-.booking-check input {
+/* Egen kryssruta i Booqys stil: glasruta, espressofyllning med bock när vald. */
+.booking-check input[type='checkbox'] {
+  appearance: none;
+  -webkit-appearance: none;
+  flex: none;
+  display: grid;
+  place-items: center;
   width: 20px;
   height: 20px;
-  accent-color: var(--ink);
+  margin: 1px 0 0;
+  border: 0;
+  border-radius: 6px;
+  background: var(--field-bg, var(--control-bg));
+  box-shadow: inset 0 0 0 1.5px var(--field-line, var(--control-line));
+  cursor: pointer;
+  transition: background 160ms var(--ease), box-shadow 160ms var(--ease);
+}
+
+.booking-check input[type='checkbox']::after {
+  content: '';
+  width: 12px;
+  height: 12px;
+  background: var(--on-accent);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 6.2l2.4 2.4 4.6-5' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 6.2l2.4 2.4 4.6-5' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / contain no-repeat;
+  opacity: 0;
+  transform: scale(0.6);
+  transition: opacity 140ms var(--ease), transform 140ms var(--ease);
+}
+
+.booking-check input[type='checkbox']:hover:not(:disabled) {
+  box-shadow: inset 0 0 0 1.5px var(--field-line-hover, var(--ink));
+}
+
+.booking-check input[type='checkbox']:checked {
+  background: var(--pill-bg, var(--accent));
+  box-shadow: none;
+}
+
+.booking-check input[type='checkbox']:checked::after {
+  opacity: 1;
+  transform: none;
+}
+
+.booking-check input[type='checkbox']:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 1.5px var(--field-line, var(--control-line)), 0 0 0 4px var(--focus);
+}
+
+.booking-check input[type='checkbox']:checked:focus-visible {
+  box-shadow: 0 0 0 4px var(--focus);
+}
+
+.booking-check input[type='checkbox'][aria-invalid='true'] {
+  box-shadow: inset 0 0 0 1.5px var(--danger), 0 0 0 3px color-mix(in srgb, var(--danger) 22%, transparent);
+}
+
+.booking-check input[type='checkbox']:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .booking-check input[type='checkbox'],
+  .booking-check input[type='checkbox']::after {
+    transition: none;
+  }
 }
 
 .notice {
   border: 1.5px dashed var(--paper-line);
-  border-radius: 3px;
+  border-radius: var(--r-md);
   background: var(--surface);
   box-shadow: none;
   color: var(--muted);
@@ -1799,7 +1863,7 @@ h1, h2, h3, h4 {
   min-height: 44px;
   padding: 0 16px;
   border: 0;
-  border-radius: 3px;
+  border-radius: var(--r-md);
   background: transparent;
   color: var(--ink);
   box-shadow: inset 0 0 0 1.5px var(--paper-line);
@@ -1833,7 +1897,7 @@ h1, h2, h3, h4 {
 /* --- Beställ: kvittot till vänster, brickan till höger ------------------ */
 
 .order-hint {
-  border-radius: 3px;
+  border-radius: var(--r-md);
   border: 1.5px dashed var(--paper-line);
   background: var(--surface);
   box-shadow: none;
@@ -1861,7 +1925,7 @@ h1, h2, h3, h4 {
 .add-btn {
   width: 44px;
   height: 44px;
-  border-radius: 3px;
+  border-radius: var(--r-md);
   box-shadow: 0 2px 6px -2px rgba(0, 0, 0, 0.35);
 }
 
@@ -1881,22 +1945,22 @@ h1, h2, h3, h4 {
 
 .stepper {
   padding: 2px;
-  border-radius: 3px;
+  border-radius: var(--r-md);
   box-shadow: inset 0 0 0 1.5px var(--accent);
 }
 
 .stepper button {
   width: 38px;
   height: 38px;
-  border-radius: 3px;
+  border-radius: var(--r-md);
 }
 
 .stepper > span {
   font-weight: 700;
 }
 
-.order-only-table {
-  border-radius: 3px;
+.order-no-pickup {
+  border-radius: var(--r-md);
   padding: 6px 8px;
   background: transparent;
   box-shadow: inset 0 0 0 1.5px var(--paper-line);
@@ -1947,7 +2011,7 @@ h1, h2, h3, h4 {
 .cart-qty button {
   width: 30px;
   height: 30px;
-  border-radius: 3px;
+  border-radius: var(--r-md);
   background: var(--fill);
   font: 700 1rem/1 var(--font);
 }
@@ -2043,7 +2107,7 @@ h1, h2, h3, h4 {
   min-height: 48px;
   padding: 0 12px;
   border: 0;
-  border-radius: 3px;
+  border-radius: var(--r-md);
   background: transparent;
   color: var(--ink);
   font: 650 1rem/1 var(--font);
@@ -2160,67 +2224,8 @@ h1, h2, h3, h4 {
 .checkout-brand img {
   width: 32px;
   height: 32px;
-  border-radius: 3px;
+  border-radius: var(--r-md);
   object-fit: cover;
-}
-
-.crumbs {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px 6px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  font: 600 0.92rem/1.3 var(--font);
-}
-
-.crumb {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--muted);
-}
-
-.crumb.is-done,
-.crumb.is-current {
-  color: var(--ink);
-}
-
-.crumb.is-current {
-  font-weight: 800;
-}
-
-.crumb-link {
-  min-height: 32px;
-  padding: 0;
-  border: 0;
-  background: none;
-  color: inherit;
-  font: inherit;
-  text-decoration: underline;
-  text-decoration-color: var(--paper-line);
-  text-underline-offset: 0.25em;
-  cursor: pointer;
-}
-
-.crumb-link:hover {
-  text-decoration-color: currentColor;
-}
-
-.crumb-sep {
-  width: 14px;
-  height: 14px;
-  fill: none;
-  stroke: var(--muted);
-  stroke-width: 1.8;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
-/* På varukorgssidan står smulorna under rubriken. */
-.page-head .crumbs {
-  margin-top: 10px;
 }
 
 .checkout-grid {
@@ -2283,7 +2288,7 @@ h1, h2, h3, h4 {
   gap: 16px;
   padding: clamp(16px, 2.4vw, 22px);
   border: 1px solid var(--paper-line);
-  border-radius: 6px;
+  border-radius: var(--r-lg);
   background: var(--fill);
 }
 
@@ -2338,13 +2343,13 @@ h1, h2, h3, h4 {
 
 .sum-lines .plate {
   --size: 52px;
-  border-radius: 6px;
+  border-radius: var(--r-md);
   box-shadow: none;
 }
 
 .sum-lines .plate img,
 .sum-lines .plate::before {
-  border-radius: 6px;
+  border-radius: var(--r-md);
 }
 
 .sum-line-text {
@@ -2465,7 +2470,7 @@ h1, h2, h3, h4 {
     display: block;
     margin-bottom: 20px;
     border: 1px solid var(--paper-line);
-    border-radius: 6px;
+    border-radius: var(--r-md);
     background: var(--fill);
   }
 
@@ -2507,12 +2512,25 @@ h1, h2, h3, h4 {
     padding: 0 16px 16px;
   }
 
+  /* samma kanter som kassakortet (.checkout ligger i sidans --gutter) */
   .checkout-cta {
     position: fixed;
-    left: 12px;
-    right: 12px;
+    left: var(--gutter);
+    right: var(--gutter);
     bottom: max(12px, env(safe-area-inset-bottom));
     z-index: 30;
+  }
+
+  /* Kassaarket isolerar sina lager (glaset), så knappens z-index gäller bara
+     inuti arket: arket självt ligger över sidfoten, annars täcker sidfotens
+     glas knappen på korta steg. Under sidhuvudet (z-index 40). */
+  .checkout:has(.checkout-cta) {
+    z-index: 2;
+  }
+
+  /* längst ner på sidan: sidfoten slutar ovanför den fasta knappen */
+  .site:has(.checkout-cta) .site-footer {
+    margin-bottom: calc(56px + 2 * max(12px, env(safe-area-inset-bottom)));
   }
 
   .checkout-cta .checkout-next {
@@ -2525,20 +2543,6 @@ h1, h2, h3, h4 {
   .checkout-bar {
     flex-direction: column;
     align-items: flex-start;
-  }
-
-  .crumbs {
-    gap: 2px 4px;
-    font-size: 0.8rem;
-  }
-
-  .crumb {
-    gap: 4px;
-  }
-
-  .crumb-sep {
-    width: 12px;
-    height: 12px;
   }
 
 }
@@ -2556,13 +2560,13 @@ h1, h2, h3, h4 {
 
 @media (max-width: 1000px) {
   .order-mobile-bar {
-    border-radius: 3px;
+    border-radius: var(--r-md);
     box-shadow: var(--shadow);
     font-family: var(--font);
   }
 
   .order-mobile-bar-count {
-    border-radius: 3px;
+    border-radius: var(--r-md);
     font-weight: 700;
   }
 
@@ -2589,7 +2593,7 @@ h1, h2, h3, h4 {
 .step-no {
   width: 30px;
   height: 30px;
-  border-radius: 3px;
+  border-radius: var(--r-md);
   background: var(--accent);
   color: var(--on-accent);
   font: 760 0.8rem/1 var(--mono);
@@ -2597,21 +2601,21 @@ h1, h2, h3, h4 {
 
 .party-stepper {
   padding: 3px;
-  border-radius: 3px;
+  border-radius: var(--r-md);
   background: var(--fill);
 }
 
 .party-btn {
   width: 44px;
   height: 44px;
-  border-radius: 3px;
+  border-radius: var(--r-md);
   background: var(--surface);
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
 }
 
-.party-stepper select {
+.party-stepper .combo {
   min-height: 44px;
-  border-radius: 3px;
+  border-radius: var(--r-md);
   font: 700 1rem/1 var(--mono);
   font-stretch: 87.5%;
 }
@@ -2619,7 +2623,7 @@ h1, h2, h3, h4 {
 .date-tile {
   width: 68px;
   min-height: 80px;
-  border-radius: 3px;
+  border-radius: var(--r-md);
   background: transparent;
   box-shadow: inset 0 0 0 1.5px var(--paper-line);
 }
@@ -2651,7 +2655,7 @@ h1, h2, h3, h4 {
 }
 
 .booking-summary-line {
-  border-radius: 3px;
+  border-radius: var(--r-md);
   border: 1.5px dashed var(--paper-line);
   background: var(--fill);
   font-weight: 600;
@@ -2660,12 +2664,12 @@ h1, h2, h3, h4 {
 
 .floor-view-toggle {
   padding: 3px;
-  border-radius: 3px;
+  border-radius: var(--r-md);
   background: var(--fill);
 }
 
 .floor-view-toggle button {
-  border-radius: 3px;
+  border-radius: var(--r-md);
   font: 700 0.8rem/1 var(--mono);
 }
 
@@ -2676,7 +2680,7 @@ h1, h2, h3, h4 {
 }
 
 .floor-svg-frame {
-  border-radius: 3px;
+  border-radius: var(--r-md);
   background: var(--table);
   box-shadow: inset 0 0 0 1.5px var(--paper-line);
 }
@@ -2687,13 +2691,13 @@ h1, h2, h3, h4 {
 }
 
 .floor-legend-swatch {
-  border-radius: 2px;
+  border-radius: var(--r-md);
 }
 
 .hold-banner {
   border: 0;
   border-top: 4px solid var(--steel);
-  border-radius: 0 0 3px 3px;
+  border-radius: 0 0 var(--r-md) var(--r-md);
   background: var(--surface);
   box-shadow: var(--shadow);
   font-size: 0.95rem;
@@ -2720,7 +2724,7 @@ h1, h2, h3, h4 {
 
 .guarantee-notice {
   border: 1.5px dashed var(--paper-line);
-  border-radius: 3px;
+  border-radius: var(--r-md);
   background: var(--fill);
   font-size: 0.92rem;
 }
@@ -2792,6 +2796,14 @@ h1, h2, h3, h4 {
   font-size: 0.85rem;
 }
 
+.catering-load-error .bq-btn {
+  margin-top: var(--bq-space-4);
+}
+
+.catering-load-error a {
+  white-space: nowrap;
+}
+
 .catering-details {
   gap: 14px;
   margin-top: 18px;
@@ -2814,12 +2826,12 @@ h1, h2, h3, h4 {
 
 .segmented {
   padding: 3px;
-  border-radius: 3px;
+  border-radius: var(--r-md);
   background: var(--fill);
 }
 
 .segmented label {
-  border-radius: 3px;
+  border-radius: var(--r-md);
   font: 600 0.92rem/1 var(--font);
 }
 
@@ -2836,7 +2848,7 @@ h1, h2, h3, h4 {
 .catering-offer,
 .bankid-box {
   border: 1.5px dashed var(--paper-line);
-  border-radius: 3px;
+  border-radius: var(--r-md);
   background: var(--fill);
 }
 
@@ -2853,7 +2865,7 @@ h1, h2, h3, h4 {
 }
 
 .bankid-qr {
-  border-radius: 3px;
+  border-radius: var(--r-md);
 }
 
 .booking-status:empty {
@@ -2946,7 +2958,7 @@ h1, h2, h3, h4 {
   width: 2.2rem;
   height: 2.2rem;
   border: 1.5px solid var(--paper-line);
-  border-radius: 3px;
+  border-radius: var(--r-md);
   background: transparent;
   color: var(--ink);
 }
@@ -2990,7 +3002,7 @@ h1, h2, h3, h4 {
 .offer-peek-percent,
 .offer-close,
 .offer-dish {
-  border-radius: 3px;
+  border-radius: var(--r-md);
 }
 
 .offer-stub::after {
@@ -3282,7 +3294,16 @@ a,
   padding-bottom: 0;
 }
 
-.page-head--rail .flow {
+/* Beställ: raden står under rubriken och bredvid märket i kassaraden. */
+.page-head .flow {
+  margin-top: 10px;
+}
+
+.checkout-bar .flow {
+  margin-top: 0;
+}
+
+.page-head.page-head--rail .flow {
   margin-top: 0;
 }
 
@@ -3324,7 +3345,7 @@ a,
   flex: none;
   width: 24px;
   height: 24px;
-  border-radius: 3px;
+  border-radius: var(--r-md);
   background: var(--surface);
   box-shadow: inset 0 0 0 1.5px var(--paper-line);
   font: 700 0.72rem/1 var(--mono);
@@ -3428,7 +3449,7 @@ a,
 .skeleton-pills i {
   display: block;
   height: 44px;
-  border-radius: 3px;
+  border-radius: var(--r-md);
   background: linear-gradient(90deg, var(--fill) 0%, var(--table-2) 50%, var(--fill) 100%);
   background-size: 200% 100%;
   animation: shimmer 1200ms linear infinite;
@@ -3499,7 +3520,7 @@ a,
   padding: 12px 16px 14px;
   border: 0;
   border-top: 4px solid var(--ok);
-  border-radius: 0 0 3px 3px;
+  border-radius: 0 0 var(--r-md) var(--r-md);
   background: var(--surface);
   box-shadow: var(--shadow);
   animation: drop 420ms var(--ease) both;
@@ -3530,7 +3551,7 @@ a,
   grid-column: 1 / -1;
   display: block;
   height: 4px;
-  border-radius: 2px;
+  border-radius: var(--r-md);
   background: var(--fill);
   overflow: hidden;
 }
@@ -3570,7 +3591,7 @@ a,
 
 .f3d-scene {
   background: var(--table);
-  border-radius: 3px;
+  border-radius: var(--r-md);
   box-shadow: inset 0 0 0 1.5px var(--paper-line);
 }
 
@@ -3687,7 +3708,7 @@ a,
   left: 10px;
   bottom: 10px;
   padding: 5px 9px;
-  border-radius: 3px;
+  border-radius: var(--r-md);
   background: color-mix(in srgb, var(--surface) 88%, transparent);
   font: 500 0.7rem/1.3 var(--mono);
   color: var(--muted);
@@ -3809,7 +3830,7 @@ a,
 .cart-item-name {
   padding: 2px 4px;
   margin-left: -4px;
-  border-radius: 2px;
+  border-radius: var(--r-md);
   animation: line-flash 700ms var(--ease) both;
 }
 
@@ -3861,7 +3882,7 @@ a,
   margin: 18px 0;
   padding: 14px 16px;
   border: 1.5px dashed var(--paper-line);
-  border-radius: 3px;
+  border-radius: var(--r-md);
   background: var(--fill);
 }
 
@@ -3960,7 +3981,7 @@ a,
   height: 40px;
   padding: 0;
   border: 0;
-  border-radius: 3px;
+  border-radius: var(--r-md);
   background: transparent;
   color: color-mix(in srgb, var(--on-accent) 86%, transparent);
   cursor: pointer;
@@ -3986,13 +4007,13 @@ a,
   transition: opacity 320ms var(--ease), rotate 360ms var(--ease), scale 360ms var(--ease);
 }
 
-.theme-toggle[aria-pressed='false'] .theme-toggle-moon {
+.theme-toggle[data-mode='light'] .theme-toggle-moon {
   opacity: 0;
   rotate: -90deg;
   scale: 0.6;
 }
 
-.theme-toggle[aria-pressed='true'] .theme-toggle-sun {
+.theme-toggle[data-mode='dark'] .theme-toggle-sun {
   opacity: 0;
   rotate: 90deg;
   scale: 0.6;
@@ -4022,7 +4043,7 @@ a,
 }
 .order-code {
   padding: 0.08em 0.32em 0.04em;
-  border-radius: 6px;
+  border-radius: var(--r-md);
   background: var(--ok-soft);
   color: var(--ok-ink);
   box-shadow: inset 0 0 0 2px var(--ok);
@@ -4059,4 +4080,111 @@ a,
 
 .floor-svg-chairs.is-selected .floor-svg-chair-back {
   fill: var(--success);
+}
+
+/* Light/dark switch: the new colours sweep over the page in a circle from
+   the button (switchTheme in theme.ts animates the clip); no cross-fade. */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+
+/* Tryck var som helst: en mjuk prick och två tunna ringar som växer ut från
+   punkten, som en signal (shared/sound.ts). */
+.press-ripple {
+  position: fixed;
+  z-index: 200;
+  width: 84px;
+  height: 84px;
+  margin: -42px 0 0 -42px;
+  border-radius: 50%;
+  pointer-events: none;
+  --signal: rgba(107, 74, 46, 0.6);
+  background: radial-gradient(circle, rgba(168, 132, 98, 0.4), rgba(168, 132, 98, 0) 32%);
+  animation: press-dot 420ms ease-out forwards;
+}
+.press-ripple::before,
+.press-ripple::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 2px solid var(--signal);
+  opacity: 0;
+  animation: press-signal 820ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+.press-ripple::after {
+  animation-delay: 150ms;
+}
+:root[data-theme='dark'] .press-ripple {
+  --signal: rgba(213, 196, 174, 0.65);
+  background: radial-gradient(circle, rgba(213, 196, 174, 0.35), rgba(213, 196, 174, 0) 32%);
+}
+@keyframes press-signal {
+  0% {
+    scale: 0.12;
+    opacity: 0.95;
+  }
+  55% {
+    opacity: 0.6;
+  }
+  100% {
+    scale: 1;
+    opacity: 0;
+  }
+}
+@keyframes press-dot {
+  from {
+    scale: 0.4;
+    opacity: 1;
+  }
+  to {
+    scale: 1;
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .press-ripple {
+    display: none;
+  }
+}
+
+/* Rätter på smala telefoner: mindre foto och priset under texten på menyn,
+   så att namn och beskrivning får bredden. Långa ord bryts i stället för att
+   klippas. */
+.dish-name,
+.dish-desc,
+.dish-allergens {
+  overflow-wrap: break-word;
+}
+
+@media (max-width: 480px) {
+  .dish {
+    gap: 12px;
+  }
+
+  .dish > .plate {
+    --size: 60px;
+  }
+
+  .dish:not(.dish--order) {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .dish:not(.dish--order) > .plate {
+    grid-row: span 2;
+  }
+
+  .dish:not(.dish--order) > .dish-price {
+    grid-column: 2;
+    margin-top: -8px;
+  }
+
+  .dish-action .order-no-pickup {
+    display: block;
+    white-space: nowrap;
+    letter-spacing: 0.02em;
+    text-align: right;
+  }
 }

@@ -24,6 +24,14 @@ function tokenFor(orderId: string): string {
   return recallToken(orderId) ?? ''
 }
 
+/** Var maten hamnar, som personalen ser det: "Bord 7", ett namngivet bord, eller Avhämtning. */
+function placeTitle(order: GuestOrder): string {
+  if (order.mode !== 'table') return 'Avhämtning'
+  const label = order.tableLabel ?? ''
+  if (!label) return 'Ditt bord'
+  return /^\d/.test(label) ? `Bord ${label}` : label
+}
+
 function headline(order: GuestOrder): string {
   const table = order.tableLabel
     ? /^bord/i.test(order.tableLabel) ? order.tableLabel : `bord ${order.tableLabel}`
@@ -142,6 +150,7 @@ export default function OrderStatusPage() {
       {error && <p className="notice error" role="alert">{error}</p>}
       {order && (
         <>
+          <p className="order-table-chip order-place">{placeTitle(order)}</p>
           <p className={`booking-status${['ready', 'completed'].includes(order.status) ? ' stamp-ok' : ''}`} aria-live="polite" key={order.status}>
             {headline(order)}
           </p>
@@ -175,9 +184,14 @@ export default function OrderStatusPage() {
             </p>
           )}
           <ul className="cart-list order-status-lines">
-            {order.lines.map((line) => (
-              <li key={line.menuItemId}>
-                <span className="cart-item-name">{line.quantity} × {line.name}</span>
+            {order.lines.map((line, i) => (
+              <li key={`${line.menuItemId}-${i}`}>
+                <span className="cart-item-name">
+                  {line.quantity} × {line.name}
+                  {line.options?.length ? (
+                    <span className="cart-item-options">{line.options.map((o) => o.choice).join(', ')}</span>
+                  ) : null}
+                </span>
                 <span />
                 <span className="cart-item-price">{kronor(line.total)}</span>
               </li>

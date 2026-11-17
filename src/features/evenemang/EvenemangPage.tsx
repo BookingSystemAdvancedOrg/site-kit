@@ -1,0 +1,66 @@
+import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
+import { Bar, Button, Chip, Printing } from '@booqy/brand'
+import './evenemang.css'
+import { useSite } from '../../shared/SiteContext'
+import { eventImage, isNotFound, kr, listEvents, when, type PublicEventSummary } from './eventsApi'
+
+type State = { kind: 'loading' } | { kind: 'ready'; events: PublicEventSummary[] } | { kind: 'error' }
+
+/**
+ * /evenemang: restaurangens kommande evenemang (K15), närmaste först. Utan
+ * funktionen svarar API:t 404 och sidan visar bara att inget finns.
+ */
+export default function EvenemangPage() {
+  const { config, location } = useSite()
+  const [state, setState] = useState<State>({ kind: 'loading' })
+  const [reloadKey, setReloadKey] = useState(0)
+
+  useEffect(() => {
+    let live = true
+    listEvents(location.locationId)
+      .then((out) => live && setState({ kind: 'ready', events: Array.isArray(out?.events) ? out.events : [] }))
+      .catch((err) => live && setState(isNotFound(err) ? { kind: 'ready', events: [] } : { kind: 'error' }))
+    return () => {
+      live = false
+    }
+  }, [location.locationId, reloadKey])
+
+  return (
+    <section className="page-hero page-prose evenemang-page" data-bq-theme="restaurant">
+      <h1>Evenemang</h1>
+      {state.kind === 'loading' ? <Printing label="Hämtar evenemang" /> : null}
+      {state.kind === 'error' ? (
+        <>
+          <Bar variant="banner" tone="danger">Evenemangen gick inte att hämta just nu. Kontrollera anslutningen och försök igen.</Bar>
+          <Button variant="primary" onClick={() => { setState({ kind: 'loading' }); setReloadKey((n) => n + 1) }}>Försök igen</Button>
+        </>
+      ) : null}
+      {state.kind === 'ready' && state.events.length === 0 ? (
+        <p>{config.tenant.name} har inga evenemang till salu just nu. Titta in igen snart.</p>
+      ) : null}
+      {state.kind === 'ready' && state.events.length > 0 ? (
+        <>
+          <p>Quiz, vinmiddagar och andra kvällar hos {config.tenant.name}. Välj ett evenemang för att köpa biljetter.</p>
+          <ul className="evenemang-list">
+            {state.events.map((ev) => {
+              const image = eventImage(ev)
+              return (
+              <li key={ev.eventId} className={`evenemang-item${image ? ' evenemang-item--image' : ''}`}>
+                {image ? <img className="evenemang-item__img" src={image.src} alt={image.alt} loading="lazy" width={640} height={360} /> : null}
+                <h2 className="evenemang-item__title">
+                  <Link to={`/evenemang/${encodeURIComponent(ev.eventId)}`}>{ev.title}</Link>
+                </h2>
+                <p className="evenemang-item__when">{when(ev.nextOccurrence, location.timezone)}</p>
+                <p className="evenemang-item__meta">
+                  {ev.soldOut ? <Chip tone="warning">Slutsålt</Chip> : <span>{ev.fromPriceSek > 0 ? `Från ${kr(ev.fromPriceSek)}` : 'Gratis'}</span>}
+                </p>
+              </li>
+              )
+            })}
+          </ul>
+        </>
+      ) : null}
+    </section>
+  )
+}

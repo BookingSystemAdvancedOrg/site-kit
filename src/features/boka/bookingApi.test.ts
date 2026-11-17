@@ -44,7 +44,7 @@ describe('errors', () => {
     [new ApiError(409, 'table_taken'), 'hann bokas'],
     [new ApiError(409, 'already_started'), 'redan börjat'],
     [new ApiError(404, 'not found'), 'hittades inte'],
-    [new ApiError(400, 'phone must be valid'), 'phone must be valid'],
+    [new ApiError(400, 'phone must be valid'), 'Kontrollera fälten, eller ring restaurangen.'],
     [new ApiError(503, 'x'), 'kunde inte genomföras'],
     [new ApiError(400, 'startTime is not a bookable time for this date'), 'Tiden går inte att boka längre'],
     [new ApiError(400, "tableIds contains a table that isn't bookable at this time"), 'Välj bord igen'],
@@ -65,6 +65,14 @@ describe('errors', () => {
     ]) {
       expect(bookingErrorMessage(new ApiError(400, message))).not.toMatch(/Kontrollera uppgifterna/)
     }
+  })
+
+  it('never appends an unknown English server message and names the restaurant phone', () => {
+    const err = new ApiError(400, 'the booking must be for the held date, time, tables and party size')
+    expect(bookingErrorMessage(err)).not.toMatch(/the booking must/)
+    expect(bookingErrorMessage(err, '08-123 456')).toBe(
+      'Något i uppgifterna stämmer inte. Kontrollera fälten, eller ring restaurangen på 08-123 456.',
+    )
   })
 
   it('tells which choice went stale', () => {
@@ -172,10 +180,13 @@ describe('table rules, special days and the bot check', () => {
     expect(staleSelection(new ApiError(400, 'tableIds are not offered online for this party size'))).toBe('tables')
   })
 
-  it('explains the bot check in Swedish', () => {
-    expect(bookingErrorMessage(new ApiError(0, 'bot_check_unavailable'))).toContain('kunde inte laddas')
-    expect(bookingErrorMessage(new ApiError(403, 'bot_check_failed'))).toContain('gick inte igenom')
-    expect(bookingErrorMessage(new ApiError(400, 'bot_check_failed'))).toContain('gick inte igenom')
+  it('explains a bot check that could not load or did not pass, and who acts', () => {
+    expect(bookingErrorMessage(new ApiError(0, 'bot_check_unavailable'))).toContain('stäng av blockerande tillägg')
+    expect(bookingErrorMessage(new ApiError(403, 'bot_check_failed'))).toContain('kontakta restaurangen')
+    expect(bookingErrorMessage(new ApiError(400, 'bot_check_failed', { error: 'bot_check_failed' })))
+      .toContain('Säkerhetskontrollen gick inte igenom')
+    expect(bookingErrorMessage(new ApiError(400, 'x', { code: 'bot_check_failed' })))
+      .toContain('Säkerhetskontrollen gick inte igenom')
   })
 
   it('describes special days for guests', () => {

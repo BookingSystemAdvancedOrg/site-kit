@@ -106,4 +106,14 @@ describe('OfferCard', () => {
     await user.click(screen.getByRole('button', { name: 'Skicka min rabattkod' }))
     expect(await screen.findByRole('alert')).toHaveTextContent('För många försök')
   })
+
+  it('says who acts when the server rejects the bot check', async () => {
+    const user = userEvent.setup()
+    signup = () => json({ error: 'bot_check_failed' }, 400)
+    render(<WithSite config={config()} path="/"><OfferCard /></WithSite>)
+    await user.type(await screen.findByPlaceholderText('din@epost.se', {}, { timeout: 2500 }), 'ny@example.se')
+    await user.click(screen.getByRole('checkbox'))
+    await user.click(screen.getByRole('button', { name: 'Skicka min rabattkod' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('kontakta restaurangen')
+  })
 })

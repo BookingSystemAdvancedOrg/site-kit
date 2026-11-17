@@ -4,11 +4,13 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import CateringPage from './CateringPage'
 import CateringRequestPage, { RETURN_CHECK_MS, SIGN_POLL_MS } from './CateringRequestPage'
-import { firstDate, tokenFor } from './cateringApi'
+import { errorMessage, firstDate, tokenFor } from './cateringApi'
+import { ApiError } from '../../shared/api'
 import type { CateringSettings, GuestRequest, Quote, Tier } from './cateringApi'
 import { WithSite } from '../../test/siteFixture'
 import { SiteContext } from '../../shared/SiteContext'
 import { siteConfig } from '../../test/siteData'
+import { formatDate } from '../../shared/DateInput'
 
 const api = vi.hoisted(() => ({
   getSettings: vi.fn(), getTiers: vi.fn(), createRequest: vi.fn(), getRequest: vi.fn(), getQuote: vi.fn(),
@@ -21,10 +23,17 @@ vi.mock('./cateringApi', async (orig) => {
     [k, k in api ? (...a: unknown[]) => (api as Record<string, (...x: unknown[]) => unknown>)[k](...a) : v]))
 })
 const getPublicMenu = vi.fn()
-vi.mock('../meny/menuApi', async (orig) => ({
-  ...(await orig<typeof import('../meny/menuApi')>()),
-  getPublicMenu: (...a: unknown[]) => getPublicMenu(...a),
-}))
+const menuCategories = vi.hoisted(() => ({ list: undefined as undefined | { categoryId: string; name: string }[] }))
+vi.mock('../meny/menuApi', async (orig) => {
+  const real = await orig<typeof import('../meny/menuApi')>()
+  return {
+    ...real,
+    getPublicMenuWithCategories: async (...a: unknown[]) => ({
+      items: await getPublicMenu(...a),
+      categories: menuCategories.list ?? real.DEFAULT_CATEGORIES,
+    }),
+  }
+})
 vi.mock('../../shared/api', async (orig) => ({
   ...(await orig<typeof import('../../shared/api')>()),
   isApiConfigured: () => true,
@@ -85,6 +94,7 @@ beforeEach(() => {
   sessionStorage.clear()
   Object.values(api).forEach((f) => f.mockReset())
   getPublicMenu.mockReset()
+  menuCategories.list = undefined
   assign.mockReset()
   vi.stubGlobal('location', { ...window.location, assign })
 })
@@ -96,6 +106,15 @@ afterEach(() => {
 describe('catering helpers', () => {
   it('first date is advanceDays after today in Stockholm', () => {
     expect(firstDate(5, new Date('2026-10-12T23:30:00Z'))).toBe('2026-10-18')
+  })
+
+  it('maps server validation to Swedish and never shows the English text', () => {
+    expect(errorMessage(new ApiError(400, 'deliveryDate must be within a year'))).toBe('Välj ett datum inom ett år framåt.')
+    expect(errorMessage(new ApiError(400, 'deliveryTime must be HH:MM'))).toBe('Välj en tid, t.ex. 12:00.')
+    expect(errorMessage(new ApiError(400, 'notes must be at most 1000 characters'))).toMatch(/^Önskemålen/)
+    expect(errorMessage(new ApiError(400, 'something new'), '08-12 34 56')).toBe(
+      'Något i uppgifterna stämmer inte. Kontrollera fälten, eller ring restaurangen på 08-12 34 56.',
+    )
   })
 
   it('keeps the link token in the tab', () => {
@@ -146,7 +165,13 @@ describe('CateringPage', () => {
 
     await user.click(within(cart).getByRole('button', { name: 'Skicka förfrågan' }))
     expect(await within(cart).findByRole('alert')).toHaveTextContent('Fyll i ditt namn.')
-    await user.type(screen.getByLabelText('Namn'), 'Anna Andersson')
+    const nameInput = screen.getByLabelText('Namn')
+    expect(nameInput).toHaveAttribute('aria-invalid', 'true')
+    expect(nameInput).toHaveAttribute('aria-describedby', 'catering-error')
+    expect(nameInput).toHaveFocus()
+    expect(document.querySelector('[data-max]')).toHaveAttribute('data-max', firstDate(365))
+    await user.type(nameInput, 'Anna Andersson')
+    expect(nameInput).not.toHaveAttribute('aria-invalid')
     await user.type(screen.getByLabelText('E-post'), 'anna@example.se')
     await user.type(screen.getByLabelText('Mobilnummer'), '070-123 45 67')
     await user.click(within(cart).getByRole('checkbox', { name: /kontaktar mig/ }))
@@ -157,6 +182,28 @@ describe('CateringPage', () => {
     }))
     expect(await screen.findByText('Skickad sida')).toBeInTheDocument()
     expect(sessionStorage.length).toBeGreaterThan(0)
+  })
+
+  it('says which dates are allowed when the typed date is out of range', async () => {
+    const user = userEvent.setup()
+    api.getSettings.mockResolvedValue(SETTINGS)
+    api.getTiers.mockResolvedValue(TIERS)
+    api.getCateringMenu.mockResolvedValue({ dishes: [], packages: [] })
+    api.getQuote.mockResolvedValue({ ...QUOTE, earliestDate: undefined })
+    getPublicMenu.mockResolvedValue([{ menuItemId: 'm1', name: 'Lasagne', description: '', price: 50, category: 'mains' }])
+    renderCalculator()
+    await user.type(await screen.findByLabelText('Portioner Lasagne'), '30')
+    await user.type(screen.getByLabelText('Antal gäster'), '30')
+    const date = document.querySelector<HTMLInputElement>('[data-max]')!
+    await user.clear(date)
+    const [y, m, d] = firstDate(400).split('-')
+    await user.type(date, `${d}/${m}/${y}`)
+    const cart = screen.getByRole('complementary', { name: 'Kalkyl' })
+    await user.click(within(cart).getByRole('button', { name: 'Skicka förfrågan' }))
+    expect(await within(cart).findByRole('alert')).toHaveTextContent(
+      `Välj ett datum mellan ${formatDate(firstDate(SETTINGS.advanceDays))} och ${formatDate(firstDate(365))}.`)
+    expect(date).toHaveFocus()
+    expect(date).toHaveAttribute('aria-describedby', 'catering-error')
   })
 
   it('offers the catering packages per guest and asks a company for its signatory', async () => {
@@ -219,6 +266,37 @@ describe('CateringPage', () => {
     await user.type(screen.getByLabelText('Portioner Kycklingspett'), '20')
     const cart = screen.getByRole('complementary', { name: 'Kalkyl' })
     expect(await within(cart).findByText(/utanför restaurangens leveransområde/)).toBeInTheDocument()
+  })
+
+  it("groups the dishes by the restaurant's own categories", async () => {
+    api.getSettings.mockResolvedValue(SETTINGS)
+    api.getTiers.mockResolvedValue(TIERS)
+    api.getCateringMenu.mockResolvedValue({ dishes: [], packages: [] })
+    menuCategories.list = [{ categoryId: 'pizzor', name: 'Pizzor' }, { categoryId: 'mains', name: 'Husmanskost' }]
+    getPublicMenu.mockResolvedValue([
+      { menuItemId: 'p1', name: 'Margherita', description: '', price: 110, category: 'pizzor' },
+      { menuItemId: 'm1', name: 'Lasagne', description: '', price: 50, category: 'mains' },
+    ])
+    renderCalculator()
+    const pizzor = await screen.findByRole('region', { name: 'Pizzor' })
+    expect(within(pizzor).getByText('Margherita')).toBeInTheDocument()
+    expect(within(screen.getByRole('region', { name: 'Husmanskost' })).getByText('Lasagne')).toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'Övrigt' })).not.toBeInTheDocument()
+  })
+
+  it('says who acts when the form cannot load, and tries again in place', async () => {
+    const user = userEvent.setup()
+    const { ApiError } = await import('../../shared/api')
+    api.getSettings.mockRejectedValueOnce(new ApiError(503, 'unavailable')).mockResolvedValue(SETTINGS)
+    api.getTiers.mockResolvedValue([])
+    api.getCateringMenu.mockResolvedValue({ dishes: [{ dishId: 'd1', name: 'Kycklingspett', pricePerPortion: 85 }], packages: [] })
+    renderCalculator()
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent(/Cateringformuläret kunde inte laddas\. Försök igen, eller ring .+ på /)
+    expect(within(alert).getByRole('link')).toHaveAttribute('href', expect.stringMatching(/^tel:/))
+    await user.click(screen.getByRole('button', { name: 'Försök igen' }))
+    expect(await screen.findByLabelText('Antal gäster')).toBeInTheDocument()
+    expect(api.getSettings).toHaveBeenCalledTimes(2)
   })
 
   it('says so when the restaurant has catering switched off', async () => {

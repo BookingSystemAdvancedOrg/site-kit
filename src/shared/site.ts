@@ -1,6 +1,7 @@
 import { siteKitConfig } from '../config'
 import { apiGet } from './api'
 import { configureBotCheck } from './botCheck'
+import type { LocationWaitlist, SiteFeatureKey } from './contracts'
 import type { BusinessHours } from './locationApi'
 import { LOCATION_KEY_PREFIX, SLUG_KEY } from './storageRegistry'
 
@@ -51,9 +52,11 @@ export interface SiteLocation {
   gracePeriodMinutes?: number | null
   specialDays?: SpecialDay[]
   /** Hur man kan beställa här (null/saknas = ingen beställning). */
-  ordering?: { pickup: boolean; table: boolean; prepMinutes: number } | null
+  ordering?: { pickup: boolean; prepMinutes: number } | null
   /** Cateringkalkylen är påslagen för platsen (cateringSettings.enabled). */
   catering?: boolean
+  /** Med kö påslaget: om gäster själva får ställa sig i kö på sajten. */
+  waitlist?: LocationWaitlist
 }
 
 export interface SiteBranding {
@@ -74,7 +77,8 @@ export interface SiteConfig {
     name: string
     slug: string | null
     branding: SiteBranding
-    features: Record<string, boolean>
+    /** Saknad nyckel = av. Strängindexet finns kvar för sajter byggda före de typade nycklarna. */
+    features: Record<string, boolean> & Partial<Record<SiteFeatureKey, boolean>>
   }
   legal: {
     legalName: string

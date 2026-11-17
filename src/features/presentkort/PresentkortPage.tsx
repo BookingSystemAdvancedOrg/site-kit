@@ -1,0 +1,306 @@
+import { useEffect, useMemo, useRef, useState } from 'react'
+import type { FormEvent } from 'react'
+import { Link } from 'react-router-dom'
+import { Bar, Button, Printing } from '@booqy/brand'
+import './presentkort.css'
+import { Elements, PaymentElement, useElements, useStripe } from '@stripe/react-stripe-js'
+import { ApiError } from '../../shared/api'
+import { PhoneLink } from '../../shared/PhoneLink'
+import { useLocationInfo } from '../../shared/useLocationInfo'
+import { useSite } from '../../shared/SiteContext'
+import { useTheme } from '../../shared/theme'
+import { paymentAppearance, paymentFonts } from '../../shared/payment/appearance'
+import { SecureNote } from '../../shared/payment/PaymentTicket'
+import { stripeFor } from '../../shared/payment/stripe'
+import { validEmail } from '../boka/bookingApi'
+import {
+  getOffer,
+  giftErrorMessage,
+  kr,
+  newPurchaseId,
+  rememberPurchase,
+  rememberedPurchase,
+  startCheckout,
+  type Checkout,
+  type Offer,
+} from './giftApi'
+
+type Paid = 'succeeded' | 'processing'
+const CUSTOM = 'custom'
+
+/**
+ * Efter 3-D Secure skickar Stripe tillbaka hit med `redirect_status`
+ * (succeeded, processing eller failed). Tack-sidan visas bara när Stripe säger
+ * att betalningen gick igenom eller behandlas, aldrig bara för att `?klart=1` finns.
+ */
+function returnedFromStripe(): { paid: Paid | null; failed: boolean } {
+  if (typeof window === 'undefined') return { paid: null, failed: false }
+  const params = new URLSearchParams(window.location.search)
+  if (params.get('klart') !== '1') return { paid: null, failed: false }
+  const status = params.get('redirect_status')
+  if (status === 'succeeded' || status === 'processing') return { paid: status, failed: false }
+  return { paid: null, failed: true }
+}
+
+/** /presentkort: välj belopp, fyll i, betala. Koden kommer via e-post när Stripe har bekräftat betalningen. */
+export default function PresentkortPage() {
+  const { config, location } = useSite()
+  const [offer, setOffer] = useState<Offer | null>(null)
+  const [missing, setMissing] = useState(false)
+  // Tillfälligt fel (nät, 429, 5xx): gästen får försöka igen, vi säger inte att presentkort saknas.
+  const [loadFailed, setLoadFailed] = useState(false)
+  const [attempt, setAttempt] = useState(0)
+  const [checkout, setCheckout] = useState<Checkout | null>(null)
+  const [returned] = useState(returnedFromStripe)
+  const [paid, setPaid] = useState<Paid | null>(returned.paid)
+  const info = useLocationInfo()
+
+  useEffect(() => {
+    getOffer(location.locationId)
+      .then((o) => (Array.isArray(o?.amountsSek) ? setOffer(o) : setMissing(true)))
+      .catch((err) => (err instanceof ApiError && err.status === 404 ? setMissing(true) : setLoadFailed(true)))
+  }, [location.locationId, attempt])
+
+  useEffect(() => {
+    if (!returned.failed) return
+    // Ta bort Stripes parametrar så att en omladdning inte visar felet igen.
+    window.history.replaceState(window.history.state, '', `${window.location.pathname}${window.location.hash}`)
+  }, [returned.failed])
+
+  if (paid) return <ThankYou status={paid} />
+  if (missing || !config.tenant.features?.giftCards) {
+    return (
+      <section className="page-hero page-prose presentkort-page" data-bq-theme="restaurant">
+        <h1>Presentkort</h1>
+        <p>{config.tenant.name} säljer inga presentkort på hemsidan just nu.</p>
+      </section>
+    )
+  }
+  if (loadFailed) {
+    return (
+      <section className="page-hero page-prose presentkort-page" data-bq-theme="restaurant">
+        <h1>Presentkort</h1>
+        <p role="alert">
+          Vi kunde inte hämta presentkorten just nu. Försök igen, eller ring {info.name}
+          {info.phone ? <> på <PhoneLink phone={info.phone} /></> : null}.
+        </p>
+        <Button variant="primary" onClick={() => { setLoadFailed(false); setAttempt((n) => n + 1) }}>Försök igen</Button>
+      </section>
+    )
+  }
+  if (!offer) {
+    return (
+      <section className="page-hero page-prose presentkort-page" data-bq-theme="restaurant">
+        <h1>Presentkort</h1>
+        <Printing label="Hämtar presentkorten" />
+      </section>
+    )
+  }
+
+  return (
+    <section className="page-hero page-prose presentkort-page" data-bq-theme="restaurant">
+      <h1>Presentkort</h1>
+      {returned.failed && !checkout ? (
+        <Bar variant="banner" tone="danger">Betalningen gick inte igenom och inget har dragits. Försök igen, gärna med ett annat kort.</Bar>
+      ) : null}
+      <p>Ge bort en middag hos {config.tenant.name}. Presentkortet gäller i {offer.validityMonths} månader och kan
+        användas både i restaurangen och när man beställer här på hemsidan.</p>
+      {checkout ? (
+        <PayStep checkout={checkout} onPaid={setPaid} />
+      ) : (
+        <Details offer={offer} onCheckout={setCheckout} />
+      )}
+      <p><Link to="/presentkort/saldo">Se saldot på ett presentkort</Link></p>
+    </section>
+  )
+}
+
+function Details({ offer, onCheckout }: { offer: Offer; onCheckout: (c: Checkout) => void }) {
+  const { config, location } = useSite()
+  const [purchaseId] = useState(newPurchaseId)
+  // The chosen tab: one of the fixed amounts, or "custom" (the amount field below).
+  const [choice, setChoice] = useState<string>(offer.amountsSek.length ? String(offer.amountsSek[0]) : CUSTOM)
+  const [custom, setCustom] = useState('')
+  const [buyerEmail, setBuyerEmail] = useState('')
+  const [recipientName, setRecipientName] = useState('')
+  const [recipientEmail, setRecipientEmail] = useState('')
+  const [message, setMessage] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  // Fältfelen visas först när gästen har försökt gå vidare, inte medan hen skriver.
+  const [tried, setTried] = useState(false)
+  const customRef = useRef<HTMLInputElement>(null)
+  const emailRef = useRef<HTMLInputElement>(null)
+  const recipientRef = useRef<HTMLInputElement>(null)
+  const chosen = choice === CUSTOM ? Number(custom || 0) : Number(choice)
+  const customOk = choice !== CUSTOM || (chosen >= offer.customMinSek && chosen <= offer.customMaxSek && Number.isInteger(chosen))
+  const emailOk = validEmail(buyerEmail)
+  const recipientOk = !recipientEmail.trim() || validEmail(recipientEmail)
+
+  async function submit(e: FormEvent) {
+    e.preventDefault()
+    if (!customOk || !emailOk || !recipientOk) {
+      setTried(true)
+      ;(!customOk ? customRef : !emailOk ? emailRef : recipientRef).current?.focus()
+      return
+    }
+    setBusy(true)
+    setError(null)
+    try {
+      const out = await startCheckout(location.locationId, {
+        purchaseId, amountSek: chosen, buyerEmail: buyerEmail.trim(),
+        ...(recipientName.trim() ? { recipientName: recipientName.trim() } : {}),
+        ...(recipientEmail.trim() ? { recipientEmail: recipientEmail.trim() } : {}),
+        ...(message.trim() ? { message: message.trim() } : {}),
+      })
+      rememberPurchase({ purchaseId, amountSek: out.amountSek, expiresAt: out.expiresAt })
+      onCheckout(out)
+    } catch (err) {
+      setError(giftErrorMessage(err, 'Det gick inte att starta köpet. Försök igen.'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const amountTabs = [...offer.amountsSek.map((a) => ({ key: String(a), label: kr(a) })), { key: CUSTOM, label: 'Eget belopp' }]
+  const customError = tried && !customOk
+  const emailError = tried && !emailOk
+  const recipientError = tried && !recipientOk
+  return (
+    <form onSubmit={submit} noValidate>
+      <Bar variant="tab" label="Välj belopp" items={amountTabs} value={choice}
+        onChange={(key) => { setChoice(key); if (key !== CUSTOM) setCustom('') }} />
+      <div className="booking-grid">
+        {choice === CUSTOM ? (
+          <label className="booking-field">
+            <span>Belopp ({offer.customMinSek}-{offer.customMaxSek} kr)</span>
+            <input ref={customRef} inputMode="numeric" value={custom} aria-invalid={customError || undefined}
+              aria-describedby={customError ? 'gift-custom-error' : undefined}
+              onChange={(e) => setCustom(e.target.value.replace(/\D/g, ''))} />
+            {customError ? (
+              <small id="gift-custom-error" className="field-hint error">
+                {`Välj ett belopp mellan ${offer.customMinSek} och ${offer.customMaxSek} kr.`}
+              </small>
+            ) : null}
+          </label>
+        ) : null}
+        <label className="booking-field">
+          <span>Din e-post (kvitto{recipientEmail ? '' : ' och koden'})</span>
+          <input ref={emailRef} type="email" autoComplete="email" required value={buyerEmail}
+            aria-invalid={emailError || undefined} aria-describedby={emailError ? 'gift-email-error' : undefined}
+            onChange={(e) => setBuyerEmail(e.target.value)} />
+          {emailError ? (
+            <small id="gift-email-error" className="field-hint error">
+              {buyerEmail.trim() ? 'Kontrollera e-postadressen.' : 'Fyll i din e-post.'}
+            </small>
+          ) : null}
+        </label>
+        <label className="booking-field">
+          <span>Mottagarens namn (valfritt)</span>
+          <input maxLength={80} value={recipientName} onChange={(e) => setRecipientName(e.target.value)} />
+        </label>
+        <label className="booking-field">
+          <span>Mottagarens e-post (valfritt)</span>
+          <input ref={recipientRef} type="email" value={recipientEmail}
+            aria-invalid={recipientError || undefined}
+            aria-describedby={recipientError ? 'gift-recipient-error' : 'gift-recipient-hint'}
+            onChange={(e) => setRecipientEmail(e.target.value)} />
+          {recipientError
+            ? <small id="gift-recipient-error" className="field-hint error">Kontrollera e-postadressen.</small>
+            : <small id="gift-recipient-hint" className="field-hint">Koden skickas dit.</small>}
+        </label>
+        <label className="booking-field booking-field--wide">
+          <span>Hälsning (valfritt)</span>
+          <textarea maxLength={300} rows={3} value={message} onChange={(e) => setMessage(e.target.value)} />
+        </label>
+      </div>
+      <p className="guest-notice">
+        Vi använder e-postadresserna för att skicka presentkortet och kvittot. Kontaktuppgifterna tas bort 24 månader
+        efter att kortet har använts eller gått ut; beloppen sparas i 7 år enligt bokföringslagen.{' '}
+        {config.tenant.name} är personuppgiftsansvarig.{' '}
+        <Link to="/integritetspolicy" target="_blank" rel="noopener">Läs integritetspolicyn</Link>
+      </p>
+      {error ? <Bar variant="banner" tone="danger">{error}</Bar> : null}
+      <Button type="submit" variant="primary" busy={busy} busyLabel="Startar…">
+        {choice === CUSTOM && !customOk ? 'Till betalning' : `Till betalning, ${kr(chosen)}`}
+      </Button>
+    </form>
+  )
+}
+
+function PayStep({ checkout, onPaid }: { checkout: Checkout; onPaid: (status: Paid) => void }) {
+  const { config } = useSite()
+  const publishableKey = config.stripe?.publishableKey ?? null
+  const stripePromise = useMemo(
+    () => (publishableKey ? stripeFor(publishableKey, checkout.stripeAccount) : null),
+    [publishableKey, checkout.stripeAccount],
+  )
+  const { theme } = useTheme()
+  const fonts = useMemo(() => paymentFonts(), [])
+  const appearance = useMemo(() => paymentAppearance(theme), [theme])
+  if (!stripePromise) {
+    return <Bar variant="banner" tone="danger">Kortbetalningen är inte tillgänglig just nu.</Bar>
+  }
+  return (
+    <>
+      <Elements key={theme} stripe={stripePromise} options={{ clientSecret: checkout.clientSecret, appearance, fonts, loader: 'never' }}>
+        <PayForm amountSek={checkout.amountSek} onPaid={onPaid} />
+      </Elements>
+      <SecureNote>Kortuppgifterna går direkt till Stripe och sparas aldrig hos oss.</SecureNote>
+    </>
+  )
+}
+
+function PayForm({ amountSek, onPaid }: { amountSek: number; onPaid: (status: Paid) => void }) {
+  const stripe = useStripe()
+  const elements = useElements()
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function pay(e: FormEvent) {
+    e.preventDefault()
+    if (!stripe || !elements || busy) return
+    setBusy(true)
+    setError(null)
+    const returnUrl = `${window.location.origin}${window.location.pathname}?klart=1${window.location.hash}`
+    const result = await stripe.confirmPayment({ elements, redirect: 'if_required', confirmParams: { return_url: returnUrl } })
+    if (result.error) {
+      setError(result.error.message ?? 'Betalningen gick inte igenom. Försök igen.')
+      setBusy(false)
+      return
+    }
+    const status = result.paymentIntent?.status
+    if (status === 'succeeded' || status === 'processing') {
+      onPaid(status)
+      return
+    }
+    setError('Betalningen gick inte igenom. Försök igen, gärna med ett annat kort.')
+    setBusy(false)
+  }
+
+  return (
+    <form onSubmit={pay} aria-busy={busy || undefined}>
+      <PaymentElement options={{ layout: { type: 'tabs' }, wallets: { link: 'never' } }} />
+      {error ? <Bar variant="banner" tone="danger">{error}</Bar> : null}
+      <Button type="submit" variant="primary" disabled={!stripe} busy={busy} busyLabel="Betalar…">
+        {`Betala ${kr(amountSek)}`}
+      </Button>
+    </form>
+  )
+}
+
+function ThankYou({ status }: { status: Paid }) {
+  const purchase = rememberedPurchase()
+  useEffect(() => () => rememberPurchase(null), [])
+  return (
+    <section className="page-hero page-prose presentkort-page" data-bq-theme="restaurant" aria-live="polite">
+      <h1>Tack för köpet!</h1>
+      <p>
+        {purchase ? `Presentkortet på ${kr(purchase.amountSek)} ` : 'Presentkortet '}
+        {status === 'processing' ? 'behandlas av banken. Koden kommer via e-post så snart betalningen är klar' : 'är betalt. Koden kommer via e-post inom några minuter'}
+        {purchase ? ` och gäller till och med ${purchase.expiresAt.slice(0, 10)}` : ''}.
+      </p>
+      <p className="cell-muted">Hittar du inte mejlet? Titta i skräpposten. Den som har koden kan använda presentkortet.</p>
+    </section>
+  )
+}

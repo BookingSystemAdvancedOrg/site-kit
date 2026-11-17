@@ -1,6 +1,6 @@
 import { apiDelete, apiGet, apiPost, ApiError } from '../../shared/api'
+import { botCheckMessage } from '../../shared/botCheckMessage'
 import { withAttribution } from '../../shared/visits'
-import { BOT_CHECK_ERRORS } from '../../shared/botCheckMessages'
 import { normalizePhone } from '../../shared/phone'
 
 /**
@@ -290,15 +290,17 @@ export function staleSelection(err: unknown): 'time' | 'tables' | null {
   return null
 }
 
-/** Svenska felmeddelanden för API:ts felkoder. */
-export function bookingErrorMessage(err: unknown): string {
+/** Svenska felmeddelanden för API:ts felkoder. `phone` är restaurangens
+ * nummer, som gästen kan ringa när felet inte går att peka ut. */
+export function bookingErrorMessage(err: unknown, phone?: string): string {
   if (err instanceof DOMException && err.name === 'TimeoutError') {
     return 'Det tog för lång tid att svara. Försök igen.'
   }
   if (!(err instanceof ApiError)) {
     return 'Något gick fel. Försök igen.'
   }
-  if (BOT_CHECK_ERRORS[err.message]) return BOT_CHECK_ERRORS[err.message]
+  const botCheck = botCheckMessage(err)
+  if (botCheck) return botCheck
   switch (err.message) {
     case 'hold_expired':
       return 'Tiden för att slutföra bokningen gick ut och bordet släpptes. Börja om.'
@@ -329,7 +331,7 @@ export function bookingErrorMessage(err: unknown): string {
       const match = err.message.match(pattern)
       if (match) return text(match)
     }
-    return `Kontrollera uppgifterna: ${err.message}`
+    return `Något i uppgifterna stämmer inte. Kontrollera fälten, eller ring restaurangen${phone ? ` på ${phone}` : ''}.`
   }
   if (err.status === 429) return 'För många försök. Vänta en stund och försök igen.'
   return 'Bokningen kunde inte genomföras just nu. Försök igen om en stund.'

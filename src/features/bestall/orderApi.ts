@@ -1,12 +1,12 @@
 import { apiGet, apiPost, ApiError } from '../../shared/api'
+import { botCheckMessage } from '../../shared/botCheckMessage'
 import { withAttribution } from '../../shared/visits'
-import { BOT_CHECK_ERRORS } from '../../shared/botCheckMessages'
-import { CART_KEY_PREFIX, ORDER_TOKEN_PREFIX, TABLE_KEY } from '../../shared/storageRegistry'
+import { CART_KEY_PREFIX, ORDER_TOKEN_PREFIX } from '../../shared/storageRegistry'
 
 /**
  * Matbeställning (backend payment-intent / get-order, docs/ORDERS.md).
  *
- *   GET  /locations/{id}/ordering[?table=<kod>]  öppet nu? (och QR-kodens bord)
+ *   GET  /locations/{id}/ordering                öppet nu för avhämtning?
  *   POST /order                                  beställningen -> betalningen (Checkout
  *                                                Session som sajten visar själv, embedded)
  *   GET  /locations/{id}/order-status/{orderId}  gästens beställning (X-Order-Token)
@@ -23,27 +23,25 @@ export const NOTES_MAX = 300
  * (shared/orders.py MAX_ORDER_ORE). */
 export const MAX_ORDER_ORE = 5_000_000
 
+/** Nya beställningar är alltid avhämtning; 'table' finns bara på äldre
+ * beställningar från QR-koden på bordet (borttagen 2026-11-17). */
 export type OrderMode = 'pickup' | 'table'
 
 export interface OrderingState {
   open: boolean
   reason?: 'disabled' | 'no_payments' | 'paused' | 'closed'
   pickup?: boolean
-  table?: boolean
   prepMinutes?: number
   closesAt?: string
   lastOrderAt?: string
   pausedUntil?: string
-  /** Bordet QR-koden hör till, med namnet i den gällande planritningen. */
-  forTable?: { label: string; title?: string }
 }
 
 export interface OrderRequest {
   locationId: string
-  mode: OrderMode
-  tableCode?: string
+  mode: 'pickup'
   /** note ("ingen lök") och allergy ("jordnötsallergi") följer rätten till köksbongen. */
-  items: { menuItemId: string; quantity: number; note?: string; allergy?: string }[]
+  items: { menuItemId: string; quantity: number; note?: string; allergy?: string; options?: OptionPick[] }[]
   name: string
   phone: string
   email: string
@@ -52,6 +50,8 @@ export interface OrderRequest {
   acceptTerms: true
   /** Välkomsterbjudandets kod (ABCD-EFGH). */
   discountCode?: string
+  /** Presentkortets kod (bara med presentkort i planen). */
+  giftCardCode?: string
   /** Gästen kryssade i "skicka mig erbjudanden" (äldre backend). */
   marketingOptIn?: boolean
   /** Frivilligt samtycke till erbjudanden (shared/MarketingConsent.tsx). */
@@ -63,12 +63,16 @@ export interface OrderRequest {
 export interface OrderCreated {
   orderId: string
   locationId: string
-  /** Checkout Sessionens hemlighet för Payment Element. */
-  clientSecret: string
-  /** Restaurangens Stripe-konto (acct_...). */
-  stripeAccount: string
+  /** Checkout Sessionens hemlighet för Payment Element (saknas när presentkortet täcker allt). */
+  clientSecret?: string
+  /** Restaurangens Stripe-konto (acct_...), saknas som ovan. */
+  stripeAccount?: string
   statusToken: string
   totalAmount: number
+  /** Presentkortet som drogs: sista fyra tecknen och beloppet i öre. */
+  giftCard?: { last4: string; debitedOre: number }
+  /** Det som återstår att betala med kort (öre); 0 = presentkortet täckte allt och beställningen är betald. */
+  chargedAmount?: number
 }
 
 export interface GuestOrder {
@@ -79,7 +83,15 @@ export interface GuestOrder {
   paymentStatus?: 'processing' | 'paid' | 'failed' | 'refunded'
   mode: OrderMode
   tableLabel?: string
-  lines: { menuItemId: string; name: string; unitPrice: number; quantity: number; total: number; vatRate: number }[]
+  lines: {
+    menuItemId: string
+    name: string
+    unitPrice: number
+    quantity: number
+    total: number
+    vatRate: number
+    options?: { group: string; choice: string; price: number }[]
+  }[]
   totalAmount: number
   /** Rabattkod (raderna är redan rabatterade). */
   discount?: { code: string; percent: number; amount: number }
@@ -93,9 +105,8 @@ export interface GuestOrder {
 
 const path = (locationId: string) => `/locations/${encodeURIComponent(locationId)}`
 
-export function getOrdering(locationId: string, tableCode?: string | null): Promise<OrderingState> {
-  const query = tableCode ? `?table=${encodeURIComponent(tableCode)}` : ''
-  return apiGet<OrderingState>(`${path(locationId)}/ordering${query}`)
+export function getOrdering(locationId: string): Promise<OrderingState> {
+  return apiGet<OrderingState>(`${path(locationId)}/ordering`)
 }
 
 export function createOrder(request: OrderRequest): Promise<OrderCreated> {
@@ -130,7 +141,40 @@ export function recallToken(orderId: string): string | null {
 
 // --- varukorgen (per plats, finns kvar om gästen avbryter betalningen) ---------
 
+/** Nyckeln är rättens id, eller lineKey(id, val) för en rätt med tillval. */
 export type Cart = Record<string, number>
+
+/** Ett val gästen gjort i en tillvalsgrupp. */
+export interface OptionPick {
+  group: string
+  choice: string
+}
+
+/**
+ * Varukorgens nyckel för en rad: samma rätt med olika tillval blir olika
+ * rader ("Pizza, stor" och "Pizza, normal"). Utan tillval är det bara id:t
+ * (servern tillåter aldrig # i ett menuItemId).
+ */
+export function lineKey(menuItemId: string, picks: OptionPick[] = []): string {
+  if (!picks.length) return menuItemId
+  const sorted = picks.slice().sort((a, b) => a.group.localeCompare(b.group) || a.choice.localeCompare(b.choice))
+  return `${menuItemId}#${JSON.stringify(sorted.map((p) => [p.group, p.choice]))}`
+}
+
+export function parseLineKey(key: string): { menuItemId: string; picks: OptionPick[] } {
+  const at = key.indexOf('#')
+  if (at < 0) return { menuItemId: key, picks: [] }
+  try {
+    const raw = JSON.parse(key.slice(at + 1)) as unknown
+    const picks = Array.isArray(raw)
+      ? raw.filter((p): p is [string, string] => Array.isArray(p) && typeof p[0] === 'string' && typeof p[1] === 'string')
+        .map(([group, choice]) => ({ group, choice }))
+      : []
+    return { menuItemId: key.slice(0, at), picks }
+  } catch {
+    return { menuItemId: key.slice(0, at), picks: [] }
+  }
+}
 
 const cartKey = (locationId: string) => `${CART_KEY_PREFIX}${locationId}`
 
@@ -210,31 +254,11 @@ export function stepQuantity(current: number, delta: number): number {
   return Math.min(MAX_QUANTITY, Math.max(0, current + delta))
 }
 
-// --- QR-kod: bordet gästen sitter vid (behålls i fliken) ---------------------
+// --- gamla QR-koder på borden -------------------------------------------------
 
-
-/** "Bord 7" för ett nummer, annars bordets namn ("Terrassen"). */
-export function tableTitle(forTable: { label: string; title?: string } | undefined): string | null {
-  if (!forTable) return null
-  return forTable.title || (/^\d/.test(forTable.label) ? `Bord ${forTable.label}` : forTable.label)
-}
-
-export function tableCodeFrom(search: string): string | null {
-  const fromUrl = new URLSearchParams(search).get('bord')
-  try {
-    if (fromUrl) sessionStorage.setItem(TABLE_KEY, fromUrl)
-    return fromUrl ?? sessionStorage.getItem(TABLE_KEY)
-  } catch {
-    return fromUrl
-  }
-}
-
-export function forgetTableCode(): void {
-  try {
-    sessionStorage.removeItem(TABLE_KEY)
-  } catch {
-    // Som ovan.
-  }
+/** En gammal QR-kod från ett bord (/bestall?bord=<kod>): leder till KassanPage. */
+export function isTableQrLink(search: string): boolean {
+  return new URLSearchParams(search).has('bord')
 }
 
 // --- text ------------------------------------------------------------------------
@@ -247,8 +271,8 @@ export function stockholmDate(now = new Date()): string {
 
 /**
  * Momssatsen för en rad, samma regel som servern (shared/orders.py):
- * alkohol 25 %, vid bordet 12 %, avhämtning 6 % under den tillfälliga
- * matmomsen 2026-04-01 till 2027-12-31 och annars 12 %.
+ * alkohol 25 %, vid bordet 12 % (äldre beställningar), avhämtning 6 % under
+ * den tillfälliga matmomsen 2026-04-01 till 2027-12-31 och annars 12 %.
  */
 export function vatRate(alcohol: boolean, mode: OrderMode, today = stockholmDate()): number {
   if (alcohol) return 25
@@ -295,19 +319,18 @@ export const MENU_ITEM_REMOVED =
   'En rätt i varukorgen finns inte längre på menyn och har tagits bort. Kontrollera beställningen och försök igen.'
 
 const ORDER_ERRORS: Record<string, string> = {
-  ...BOT_CHECK_ERRORS,
   ordering_closed: 'Vi har precis slutat ta emot beställningar för idag.',
   ordering_paused: 'Köket har pausat beställningar en stund. Försök igen om en liten stund.',
   ordering_disabled: 'Det går inte att beställa online just nu.',
   ordering_no_payments: 'Betalningen är inte tillgänglig just nu.',
   ordering_no_site: 'Det går inte att beställa online just nu.',
   ordering_pickup_off: 'Avhämtning går inte att beställa just nu.',
-  ordering_table_off: 'Beställning vid bordet går inte just nu - fråga personalen.',
+  ordering_table_off: 'Beställ och betala i kassan i restaurangen.',
+  table_ordering_off: 'Beställ och betala i kassan i restaurangen.',
   menu_item_unavailable: 'En rätt i varukorgen finns inte längre på menyn. Ta bort den och försök igen.',
-  alcohol_not_for_pickup: 'Drycker med alkohol kan bara beställas vid bordet.',
-  'table code is invalid': 'QR-koden känns inte igen. Skanna koden på bordet igen.',
-  'table code revoked': 'Den här QR-koden gäller inte längre. Fråga personalen så hjälper de dig att beställa.',
-  'table removed': 'Bordet med den här QR-koden finns inte längre. Fråga personalen så hjälper de dig att beställa.',
+  alcohol_not_for_pickup: 'Drycker med alkohol går inte att beställa för avhämtning. Ta bort dem och försök igen.',
+  option_invalid: 'Ett tillval i varukorgen finns inte längre. Ta bort rätten och lägg till den igen.',
+  option_required: 'Välj de tillval som krävs, till exempel storlek, och försök igen.',
   payment_unavailable: 'Betalningen är inte tillgänglig just nu. Försök igen om en stund.',
   verification_unavailable: 'Säkerhetskontrollen svarar inte just nu. Försök igen om en stund.',
   too_many_requests: 'För många försök. Vänta en stund och försök igen.',
@@ -320,6 +343,33 @@ const ORDER_ERRORS: Record<string, string> = {
   discount_used: 'Rabattkoden är redan använd.',
   discount_min_order: 'Beställningen är under minsta beloppet för rabattkoden.',
   discount_other_email: 'Rabattkoden gäller bara med e-postadressen den skickades till.',
+  gift_card_not_found: 'Presentkortskoden känns inte igen. Kontrollera koden.',
+  card_expired: 'Presentkortet har gått ut. Ta bort koden och betala med kort.',
+  card_void: 'Presentkortet är spärrat. Ta bort koden och betala med kort, eller kontakta restaurangen.',
+  insufficient_balance:
+    'Presentkortet har inget saldo kvar (det kan vara reserverat för en obetald beställning i upp till 30 minuter). Ta bort koden och betala med kort.',
+  gift_card_min_order:
+    'Presentkortet kan inte användas för det här beloppet: det som blir kvar att betala måste vara minst 3 kr. Lägg till något mer eller ta bort koden.',
+  gift_card_refused: 'Presentkortet kan inte användas. Kontrollera koden eller ta bort den och betala med kort.',
+  gift_cards_off: 'Presentkort kan inte användas här just nu. Ta bort koden och betala med kort.',
+  'giftCardCode must be text': 'Presentkortskoden känns inte igen. Kontrollera koden.',
+  gift_card_unavailable:
+    'Presentkort går inte att använda just nu (Booqys fel). Försök igen om en stund, eller ta bort koden och betala med kort.',
+}
+
+const GIFT_CARD_ERRORS = new Set([
+  'gift_card_not_found', 'card_expired', 'card_void', 'insufficient_balance', 'gift_card_min_order',
+  'gift_card_refused', 'gift_cards_off', 'giftCardCode must be text', 'gift_card_unavailable',
+])
+
+/** Felet gäller presentkortskoden (fältet ska markeras). */
+export function isGiftCardError(err: unknown): boolean {
+  return err instanceof ApiError && GIFT_CARD_ERRORS.has(err.message)
+}
+
+/** Ett fel från servern med eget svar (t.ex. pausat); null = hämtningen misslyckades. */
+export function knownOrderError(err: unknown): string | null {
+  return err instanceof ApiError && ORDER_ERRORS[err.message] ? ORDER_ERRORS[err.message] : null
 }
 
 export function orderErrorMessage(err: unknown): string {
@@ -327,6 +377,8 @@ export function orderErrorMessage(err: unknown): string {
     return 'Det tog för lång tid att svara. Försök igen.'
   }
   if (!(err instanceof ApiError)) return 'Något gick fel. Försök igen.'
+  const botCheck = botCheckMessage(err)
+  if (botCheck) return botCheck
   if (ORDER_ERRORS[err.message]) return ORDER_ERRORS[err.message]
   if (/^phone/.test(err.message)) return 'Fyll i ett giltigt mobilnummer, t.ex. 070-123 45 67.'
   if (/^email/.test(err.message)) return 'Fyll i en giltig e-postadress.'

@@ -35,6 +35,7 @@ export type {
   SitePrivacy,
   SpecialDay,
 } from './shared/site'
+export type { LocationWaitlist, SiteFeatureKey, SiteSlotId } from './shared/contracts'
 
 /* --- API --------------------------------------------------------------- */
 export { ApiError, apiBaseUrl, apiDelete, apiGet, apiPost, isApiConfigured } from './shared/api'
@@ -72,13 +73,18 @@ export { Menu } from './features/meny/Menu'
 export { CategoryNav } from './features/meny/CategoryNav'
 export { DishImage } from './features/meny/DishImage'
 export { Plate } from './shared/Plate'
-export { CATEGORY_LABEL, CATEGORY_ORDER, formatPrice, groupByCategory, menuImageUrl } from './features/meny/menuApi'
-export type { MenuCategory, PublicMenuItem } from './features/meny/menuApi'
+export {
+  allergenText, CATEGORY_LABEL, CATEGORY_ORDER, DEFAULT_CATEGORIES, formatPrice, getPublicMenuWithCategories,
+  groupByCategory, menuImagePosition, menuImageUrl,
+} from './features/meny/menuApi'
+export type { MenuCategory, MenuCategoryEntry, OptionGroup, PublicMenuItem } from './features/meny/menuApi'
 
 /* --- Flöden ---------------------------------------------------------- */
 export { default as BookingFlow } from './features/boka/BokaBordPage'
 export { default as ManageBooking } from './features/bokning/ManageBookingPage'
 export { default as OrderFlow } from './features/bestall/BestallPage'
+export { default as KassanPage } from './features/bestall/KassanPage'
+export { isTableQrLink } from './features/bestall/orderApi'
 export { default as OrderStatus } from './features/bestall/OrderStatusPage'
 export { default as CateringFlow } from './features/catering/CateringPage'
 export { default as CateringRequest } from './features/catering/CateringRequestPage'
@@ -98,12 +104,16 @@ export { default as AddToCalendar } from './shared/AddToCalendar'
 export { Celebrate } from './shared/Celebrate'
 export { DateInput, DateTimeInput, TimeInput, parseDate, parseTime } from './shared/DateInput'
 export { FlowSteps } from './shared/FlowSteps'
+export { Select, SELECT_SHEET_QUERY } from './shared/Select'
+export type { SelectGroup, SelectItem, SelectOption, SelectProps } from './shared/Select'
 export type { FlowStep } from './shared/FlowSteps'
 export { OpeningHoursModal } from './shared/OpeningHoursModal'
 export { PhoneInput } from './shared/PhoneInput'
 export { PhoneLink } from './shared/PhoneLink'
 export { editPhone, formatPhone, formatPhoneNational, phoneHref, toE164 } from './shared/phone'
 export { ThemeToggle } from './shared/ThemeToggle'
+export { SoundToggle } from './shared/SoundToggle'
+export { installSound, setSound, soundOn, useSound } from './shared/sound'
 export { MoonIcon, SunIcon } from './shared/ThemeIcons'
 export { applyTheme, currentTheme, setTheme, storedTheme, systemTheme } from './shared/theme'
 export type { Theme } from './shared/theme'
@@ -125,6 +135,8 @@ export type { ConsentChoice } from './shared/MarketingConsent'
 export { default as PrivacyPolicy } from './features/juridik/PrivacyPage'
 export { default as CookiePolicy } from './features/juridik/CookiesPage'
 export { default as BookingTermsPage } from './features/juridik/TermsPage'
+export { sitePages } from './pages'
+export { SkelCard } from './shared/Skeleton'
 export { NoticeText, parseNotice } from './features/juridik/NoticeText'
 export {
   bookingTerms,
@@ -134,7 +146,7 @@ export {
   lateCancelApplies,
 } from './shared/bookingTerms'
 export type { TermsContext, TermsSection } from './shared/bookingTerms'
-export { STORAGE_REGISTRY, THEME_KEY } from './shared/storageRegistry'
+export { GIFT_CARD_PURCHASE_KEY, SOUND_KEY, STORAGE_REGISTRY, THEME_KEY, TICKET_PURCHASE_KEY, WAITLIST_TOKEN_PREFIX } from './shared/storageRegistry'
 export type { StorageCategory, StorageEntry, StorageKind } from './shared/storageRegistry'
 
 /* --- Besöksstatistik ------------------------------------------------------ */
