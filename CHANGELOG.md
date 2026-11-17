@@ -4,7 +4,7 @@ All notable changes to `@bookingsystemadvancedorg/site-kit`. Semver: removing or
 anything exported from `index.ts`, `testing.ts` or `styles.css` (including a
 CSS variable or class name a site styles) is a major version.
 
-## Unreleased (suggested 0.3.0)
+## 0.3.0 (2026-11-17)
 
 Caught up with `customer-front-end/packages/site-kit` (origin/dev bf3e23f,
 2026-11-17). The live restaurant sites build from this package, so these
