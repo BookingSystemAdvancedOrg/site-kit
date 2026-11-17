@@ -4,7 +4,7 @@ All notable changes to `@bookingsystemadvancedorg/site-kit`. Semver: removing or
 anything exported from `index.ts`, `testing.ts` or `styles.css` (including a
 CSS variable or class name a site styles) is a major version.
 
-## Unreleased
+## 0.2.0 (2026-11-17)
 
 - Bot check moved from Cloudflare Turnstile to AWS WAF. Breaking:
   `TurnstileWidget` is removed, and `SiteConfig.turnstile` is replaced by
