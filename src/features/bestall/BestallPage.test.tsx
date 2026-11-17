@@ -24,14 +24,6 @@ vi.mock('@stripe/react-stripe-js/checkout', () => ({
   useCheckoutElements: () => ({ type: 'success', checkout: { confirm: stripe.confirm } }),
 }))
 
-vi.mock('../boka/TurnstileWidget', () => ({
-  TurnstileWidget: ({ onToken, action }: { onToken: (t: string | null) => void; action: string }) => (
-    <button type="button" onClick={() => onToken(`token-${action}`)}>
-      Jag är inte en robot
-    </button>
-  ),
-}))
-
 const MENU = {
   items: [
     { menuItemId: 'pizza', name: 'Margherita', description: '', price: 125, category: 'mains', imageKey: 'k' },
@@ -45,11 +37,10 @@ let ordering: Record<string, unknown>
 let orderResponse: () => Response
 const assign = vi.fn()
 
-function config(turnstile: string | null = null) {
+function config() {
   const c = siteConfig({ features: { reservations: true, ordering: true, catering: false, terminal: false } })
   c.stripe = { publishableKey: 'pk_test_1', accountId: 'acct_1' }
   c.locations[0].ordering = { pickup: true, table: true, prepMinutes: 20 }
-  c.turnstile = { siteKey: turnstile }
   return c
 }
 
@@ -315,9 +306,9 @@ describe('BestallPage', () => {
     expect(await screen.findByRole('button', { name: 'Lägg till Margherita' })).toBeDisabled()
   })
 
-  it('checks the guest before sending and sends the bot check with the order action', async () => {
+  it('checks the guest before sending the order', async () => {
     const user = userEvent.setup()
-    render(<WithSite config={config('site-key')} path="/bestall"><BestallPage /></WithSite>)
+    render(<WithSite config={config()} path="/bestall"><BestallPage /></WithSite>)
     await user.click(await screen.findByRole('button', { name: 'Lägg till Cola' }))
     await forward(user)
     await forward(user)
@@ -336,10 +327,7 @@ describe('BestallPage', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('Godkänn villkoren')
     await user.click(screen.getByRole('checkbox', { name: /inte kan ändras/ }))
     await user.click(screen.getByRole('button', { name: /Till betalning/ }))
-    expect(screen.getByRole('alert')).toHaveTextContent('säkerhetskontrollen')
-    await user.click(screen.getByRole('button', { name: 'Jag är inte en robot' }))
-    await user.click(screen.getByRole('button', { name: /Till betalning/ }))
-    expect(postedOrder()).toMatchObject({ turnstileToken: 'token-order' })
+    expect(postedOrder()).toMatchObject({ name: 'Anna', email: 'anna@example.se' })
   })
 
   it('explains a closed kitchen from the server', async () => {

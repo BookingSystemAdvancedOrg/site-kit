@@ -6,6 +6,17 @@ CSS variable or class name a site styles) is a major version.
 
 ## Unreleased
 
+- Bot check moved from Cloudflare Turnstile to AWS WAF. Breaking:
+  `TurnstileWidget` is removed, and `SiteConfig.turnstile` is replaced by
+  the optional `botCheck` (`{ integrationUrl }`). The API client loads the
+  WAF script in the background and sends the guarded form posts (booking,
+  table hold, order, catering request, offer signup, gift cards, event
+  tickets, waitlist) to `/api` on the site's own domain (CloudFront,
+  infrastructure network/waf-sites) with the `aws-waf-token` cookie; no
+  widget and no token field. New errors `bot_check_unavailable` and
+  `bot_check_failed` get Swedish guest copy, and the cookie page lists
+  `aws-waf-token` instead of Turnstile. Nothing to change in a site except
+  removing any direct `TurnstileWidget` use.
 - Phone numbers: a Swedish mobile number typed without the 0 ("70 174 06 05")
   becomes +46701740605 in `PhoneInput`/`toE164` and is accepted by
   `normalizePhone`, which now lives in `shared/phone` and also refuses

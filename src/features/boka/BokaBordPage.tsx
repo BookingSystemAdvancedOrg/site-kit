@@ -30,12 +30,10 @@ import {
   staleSelection,
   tableReasonText,
   todayIn,
-  turnstileMissing,
   validEmail,
 } from './bookingApi'
 import type { Availability, AvailabilitySlot, GuestReservation, TableHold, TableOption, TableUnavailable } from './bookingApi'
 import { GuaranteeConfirmation, GuaranteeNotice, GuaranteeStep } from './GuaranteeStep'
-import { TurnstileWidget } from './TurnstileWidget'
 import { ApiError } from '../../shared/api'
 import { FloorPlanSvg } from './FloorPlanSvg'
 import { FloorPlan3D } from './FloorPlan3D'
@@ -134,8 +132,8 @@ function sameTables(a: TableOption | null, b: TableOption | null): boolean {
  * gästen välja igen med uppdaterad ledighet.
  *
  * Avvikande dagar (stängt, andra tider, ingen onlinebokning) förklaras vid
- * tiderna och syns i datumlistan. Säkerhetskontrollen (Turnstile) visas
- * ovanför Boka-knappen när plattformen har den påslagen.
+ * tiderna och syns i datumlistan. Säkerhetskontrollen (AWS WAF) körs i
+ * bakgrunden när bordet hålls (shared/botCheck.ts), utan någon ruta.
  *
  * Kortgaranti: kräver platsen kort för sällskapets storlek visas villkoren
  * innan gästen bokar, och efter bokningen (status "pending") Stripes
@@ -206,9 +204,6 @@ export default function BokaBordPage() {
   const confirmRef = useRef<HTMLDivElement>(null)
   const terms = location.guarantee ?? null
   const cardNeeded = needsCard(terms, partySize, true)
-  const turnstileSiteKey = config.turnstile?.siteKey ?? null
-  const [turnstileToken, setTurnstileToken] = useState<string | null>(null)
-  const [turnstileReset, setTurnstileReset] = useState(0)
   const specialByDate = useMemo(
     () => new Map((location.specialDays ?? []).map((d) => [d.date, d] as const)),
     [location.specialDays],
@@ -233,8 +228,6 @@ export default function BokaBordPage() {
     setGuest(EMPTY_GUEST)
     setFormError(null)
     setSlotNotice(null)
-    setTurnstileToken(null)
-    setTurnstileReset((n) => n + 1)
     setRefresh((n) => n + 1)
     setRestartNotice(text)
     window.scrollTo({ top: 0, behavior: 'smooth' })
@@ -467,8 +460,6 @@ export default function BokaBordPage() {
       : !option ? 'Välj ett bord.'
       : cardNeeded && !config.stripe.publishableKey
         ? `Onlinebokning för ${partySize} personer kräver kortgaranti, som inte är tillgänglig just nu. Ring oss på ${formatPhoneNational(info.phone) || 'restaurangen'}.`
-      : turnstileSiteKey && !turnstileToken
-        ? 'Bekräfta säkerhetskontrollen (rutan ovanför knappen).'
         : null
     if (problem) {
       setFormError(problem)
@@ -483,7 +474,6 @@ export default function BokaBordPage() {
         startTime: slot!.startTime,
         tableIds: option!.tableIds,
         partySize,
-        ...(turnstileToken ? { turnstileToken } : {}),
       })
       setHold(held)
       setNow(Date.now())
@@ -492,11 +482,7 @@ export default function BokaBordPage() {
       // inte sidfoten som sidan annars står kvar vid på en telefon.
       headRef.current?.scrollIntoView?.({ block: 'start', behavior: scrollBehavior() })
     } catch (err) {
-      setFormError(
-        !turnstileSiteKey && turnstileMissing(err)
-          ? 'Sidan behöver laddas om. Ladda om sidan och försök igen.'
-          : bookingErrorMessage(err),
-      )
+      setFormError(bookingErrorMessage(err))
       const stale = staleSelection(err)
       if (stale) {
         // Tiden passerade 30-minutersgränsen eller bordet hann tas: välj
@@ -507,11 +493,6 @@ export default function BokaBordPage() {
         setRefresh((n) => n + 1)
       }
     } finally {
-      // Säkerhetskontrollens token gäller ett försök - widgeten tar fram en ny.
-      if (turnstileSiteKey) {
-        setTurnstileToken(null)
-        setTurnstileReset((n) => n + 1)
-      }
       setHolding(false)
     }
   }
@@ -896,13 +877,6 @@ export default function BokaBordPage() {
                 <p className="cell-muted">
                   När du bekräftar hålls bordet åt dig i 15 minuter medan du fyller i dina uppgifter.
                 </p>
-                {turnstileSiteKey && (
-                  <TurnstileWidget
-                    siteKey={turnstileSiteKey}
-                    resetKey={turnstileReset}
-                    onToken={setTurnstileToken}
-                  />
-                )}
                 {formError && <p className="notice error" role="alert">{formError}</p>}
                 <button
                   type="button"

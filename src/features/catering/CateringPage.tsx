@@ -5,7 +5,6 @@ import { isApiConfigured } from '../../shared/api'
 import { useSite } from '../../shared/SiteContext'
 import { PhoneInput } from '../../shared/PhoneInput'
 import { normalizePhone, validEmail } from '../boka/bookingApi'
-import { TurnstileWidget } from '../boka/TurnstileWidget'
 import { CATEGORY_LABEL, getPublicMenu, groupByCategory } from '../meny/menuApi'
 import { useStickyCart } from '../../shared/useStickyCart'
 import type { PublicMenuItem } from '../meny/menuApi'
@@ -126,9 +125,6 @@ export default function CateringPage() {
   const [quote, setQuote] = useState<Quote | null>(null)
   const [quoteError, setQuoteError] = useState<string | null>(null)
   const [quoting, setQuoting] = useState(false)
-  const turnstileSiteKey = config.turnstile?.siteKey ?? null
-  const [turnstileToken, setTurnstileToken] = useState<string | null>(null)
-  const [turnstileReset, setTurnstileReset] = useState(0)
 
   useEffect(() => {
     if (!isApiConfigured()) return
@@ -223,7 +219,6 @@ export default function CateringPage() {
     if (!settings) return
     const problem = check(form, guests, minGuests, chosenCount)
     if (problem || !form.equipmentReturn || !quoteInput) return setError(problem)
-    if (turnstileSiteKey && !turnstileToken) return setError('Bekräfta säkerhetskontrollen ovanför knappen.')
     setBusy(true)
     try {
       const created = await createRequest(locationId, {
@@ -244,17 +239,12 @@ export default function CateringPage() {
         ...(form.notes.trim() ? { notes: form.notes.trim() } : {}),
         acceptTerms: true,
         language: 'sv',
-        ...(turnstileToken ? { turnstileToken } : {}),
         ...consentFields(form.consent, config.privacy, Boolean(config.tenant.features.marketing)),
       })
       rememberToken(created.requestId, created.token)
       navigate(`/catering/${created.locationId}/${created.requestId}?skickad=1`)
     } catch (err) {
       setError(errorMessage(err))
-      if (turnstileSiteKey) {
-        setTurnstileToken(null)
-        setTurnstileReset((n) => n + 1)
-      }
     } finally {
       setBusy(false)
     }
@@ -570,10 +560,6 @@ export default function CateringPage() {
           </label>
           <MarketingConsent value={form.consent} onChange={(v) => set('consent', v)} />
           <GuestDataNotice kind="catering" />
-          {turnstileSiteKey && (
-            <TurnstileWidget siteKey={turnstileSiteKey} resetKey={turnstileReset} action="catering"
-              onToken={setTurnstileToken} />
-          )}
           {error && <p className="notice error" role="alert">{error}</p>}
           <button type="submit" className={`btn-primary${busy ? ' is-busy' : ''}`} disabled={busy || chosenCount === 0}>
             {busy ? <><span className="spinner" aria-hidden="true" />Skickar förfrågan…</> : 'Skicka förfrågan'}

@@ -1,6 +1,6 @@
 /**
  * Allt som restaurangens webbplats sparar i gästens webbläsare, på ett
- * ställe, inklusive det tredje parter (Stripe, Cloudflare) sätter.
+ * ställe, inklusive det tredje parter (Stripe, AWS WAF) sätter.
  *
  * Det här är facit: koden hämtar sina nyckelnamn härifrån, integritets-
  * policyns tabell ritas härifrån, och ett test (storageRegistry.test.ts)
@@ -111,11 +111,11 @@ export const STORAGE_REGISTRY: readonly StorageEntry[] = [
     where: 'Kortgaranti, betalning av beställning och catering',
   },
   {
-    name: 'Cloudflare Turnstile',
-    kind: 'ingen',
-    setBy: 'Cloudflare',
-    purpose: 'Kontrollerar att en bokning, beställning eller förfrågan görs av en människa och inte en robot. Sätter inga cookies.',
-    lifetime: '-',
+    name: 'aws-waf-token',
+    kind: 'cookie',
+    setBy: 'Booqy (AWS)',
+    purpose: 'Säkerhetskontroll som visar att en bokning, beställning eller förfrågan skickas av en människa och inte en robot. Sätts först när du skickar ett formulär.',
+    lifetime: 'Några minuter, förnyas medan sidan är öppen',
     category: 'nödvändig',
     where: 'Bokning, beställning, catering och välkomsterbjudandet',
   },

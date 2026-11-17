@@ -13,7 +13,6 @@ import {
   normalizePhone,
   staleSelection,
   todayIn,
-  turnstileMissing,
   validEmail,
 } from './bookingApi'
 import { json } from '../../test/siteData'
@@ -161,9 +160,6 @@ describe('table rules, special days and the bot check', () => {
   it.each([
     ['online booking is closed for this date', 'stängd den dagen'],
     ['tableIds are not offered online for this party size', 'Välj ett annat bord'],
-    ['turnstile token is required', 'Bekräfta säkerhetskontrollen'],
-    ['turnstile verification failed', 'Bekräfta säkerhetskontrollen'],
-    ['turnstile token expired', 'hann gå ut'],
   ])('explains %s in Swedish', (message, text) => {
     expect(bookingErrorMessage(new ApiError(400, message))).toContain(text)
   })
@@ -176,11 +172,10 @@ describe('table rules, special days and the bot check', () => {
     expect(staleSelection(new ApiError(400, 'tableIds are not offered online for this party size'))).toBe('tables')
   })
 
-  it('knows when the server wants a bot check the page does not show', () => {
-    expect(turnstileMissing(new ApiError(400, 'turnstile token is required'))).toBe(true)
-    expect(turnstileMissing(new ApiError(400, 'turnstile verification failed'))).toBe(false)
-    expect(turnstileMissing(new ApiError(409, 'table_taken'))).toBe(false)
-    expect(turnstileMissing(new Error('x'))).toBe(false)
+  it('explains the bot check in Swedish', () => {
+    expect(bookingErrorMessage(new ApiError(0, 'bot_check_unavailable'))).toContain('kunde inte laddas')
+    expect(bookingErrorMessage(new ApiError(403, 'bot_check_failed'))).toContain('gick inte igenom')
+    expect(bookingErrorMessage(new ApiError(400, 'bot_check_failed'))).toContain('gick inte igenom')
   })
 
   it('describes special days for guests', () => {

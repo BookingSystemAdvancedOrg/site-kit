@@ -1,5 +1,6 @@
 import { apiGet, apiPost, ApiError } from '../../shared/api'
 import { withAttribution } from '../../shared/visits'
+import { BOT_CHECK_ERRORS } from '../../shared/botCheckMessages'
 import { CART_KEY_PREFIX, ORDER_TOKEN_PREFIX, TABLE_KEY } from '../../shared/storageRegistry'
 
 /**
@@ -49,7 +50,6 @@ export interface OrderRequest {
   notes?: string
   language: 'sv'
   acceptTerms: true
-  turnstileToken?: string
   /** Välkomsterbjudandets kod (ABCD-EFGH). */
   discountCode?: string
   /** Gästen kryssade i "skicka mig erbjudanden" (äldre backend). */
@@ -295,6 +295,7 @@ export const MENU_ITEM_REMOVED =
   'En rätt i varukorgen finns inte längre på menyn och har tagits bort. Kontrollera beställningen och försök igen.'
 
 const ORDER_ERRORS: Record<string, string> = {
+  ...BOT_CHECK_ERRORS,
   ordering_closed: 'Vi har precis slutat ta emot beställningar för idag.',
   ordering_paused: 'Köket har pausat beställningar en stund. Försök igen om en liten stund.',
   ordering_disabled: 'Det går inte att beställa online just nu.',
@@ -331,8 +332,6 @@ export function orderErrorMessage(err: unknown): string {
   if (/^email/.test(err.message)) return 'Fyll i en giltig e-postadress.'
   if (/^name/.test(err.message)) return 'Fyll i ditt namn.'
   if (/^quantity|^items may have/.test(err.message)) return `Högst ${MAX_QUANTITY} av varje rätt och ${MAX_LINES} olika rätter per beställning.`
-  if (/^turnstile token expired/.test(err.message)) return 'Säkerhetskontrollen hann gå ut. Bekräfta igen.'
-  if (/^turnstile/.test(err.message)) return 'Bekräfta säkerhetskontrollen och försök igen.'
   if (err.status === 404) return 'Beställningen hittades inte. Kontrollera länken.'
   if (err.status === 429) return ORDER_ERRORS.too_many_requests
   return 'Beställningen kunde inte skickas just nu. Försök igen om en stund.'

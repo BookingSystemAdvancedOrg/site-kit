@@ -1,4 +1,5 @@
 import { ApiError, apiGet, apiPost } from '../../shared/api'
+import { BOT_CHECK_ERRORS } from '../../shared/botCheckMessages'
 
 /**
  * Välkomsterbjudandet (restaurangen ställer in det under Marknadsföring i
@@ -51,7 +52,6 @@ export function signUp(body: {
   locationId: string
   email: string
   consent: true
-  turnstileToken?: string
 }): Promise<{ sent: true; expiresAt?: string }> {
   return apiPost('/m/signup', body)
 }
@@ -73,6 +73,7 @@ export function discounted(unitOre: number, percent: number): number {
 }
 
 const SIGNUP_ERRORS: Record<string, string> = {
+  ...BOT_CHECK_ERRORS,
   offer_already_used: 'Den här e-postadressen har redan använt erbjudandet.',
   offer_expired: 'Koden som skickades till den här adressen har gått ut.',
   no_offer: 'Erbjudandet är inte längre aktivt.',
@@ -85,7 +86,6 @@ export function signupErrorMessage(err: unknown): string {
     if (SIGNUP_ERRORS[err.message]) return SIGNUP_ERRORS[err.message]
     if (err.status === 429) return SIGNUP_ERRORS.too_many_requests
     if (/^email/.test(err.message)) return 'Fyll i en giltig e-postadress.'
-    if (/^turnstile/.test(err.message)) return 'Bekräfta säkerhetskontrollen och försök igen.'
   }
   return 'Det gick inte att skicka koden just nu. Försök igen om en stund.'
 }

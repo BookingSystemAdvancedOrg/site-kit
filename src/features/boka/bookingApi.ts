@@ -1,5 +1,6 @@
 import { apiDelete, apiGet, apiPost, ApiError } from '../../shared/api'
 import { withAttribution } from '../../shared/visits'
+import { BOT_CHECK_ERRORS } from '../../shared/botCheckMessages'
 import { normalizePhone } from '../../shared/phone'
 
 /**
@@ -157,8 +158,6 @@ export interface BookingRequest {
   /** Frivilligt samtycke till erbjudanden (shared/MarketingConsent.tsx). */
   marketingConsent?: { channels: ('email' | 'sms')[]; textVersion: string }
   acceptTerms: true
-  /** Token från säkerhetskontrollen (Cloudflare Turnstile) när den visas. */
-  turnstileToken?: string
   /** Bordet hålls redan (POST /holds) - bokningen tar över det. */
   holdId?: string
 }
@@ -186,7 +185,6 @@ export interface HoldRequest {
   startTime: string
   tableIds: string[]
   partySize: number
-  turnstileToken?: string
 }
 
 export interface GuestReservation {
@@ -272,8 +270,6 @@ const VALIDATION_TEXT: [RegExp, (m: RegExpMatchArray) => string][] = [
   [/^acceptTerms must be true/, () => 'Du behöver godkänna bokningsvillkoren.'],
   [/^online booking is closed for this date/, () => 'Onlinebokningen är stängd den dagen. Ring oss för att boka.'],
   [/^tableIds are not offered online/, () => 'Bordet går inte att boka online för så många personer. Välj ett annat bord.'],
-  [/^turnstile token expired/, () => 'Säkerhetskontrollen hann gå ut. Bekräfta igen och tryck Boka.'],
-  [/^turnstile/, () => 'Bekräfta säkerhetskontrollen (rutan ovanför knappen) och försök igen.'],
   [/^(tableIds|at most \d+ tables)/, () => 'Välj bord igen.'],
 ]
 
@@ -294,12 +290,6 @@ export function staleSelection(err: unknown): 'time' | 'tables' | null {
   return null
 }
 
-/** Servern kräver säkerhetskontrollen men sidan visar den inte - sidan
- * laddades innan kontrollen slogs på och behöver laddas om. */
-export function turnstileMissing(err: unknown): boolean {
-  return err instanceof ApiError && err.status === 400 && /^turnstile token is required/.test(err.message)
-}
-
 /** Svenska felmeddelanden för API:ts felkoder. */
 export function bookingErrorMessage(err: unknown): string {
   if (err instanceof DOMException && err.name === 'TimeoutError') {
@@ -308,6 +298,7 @@ export function bookingErrorMessage(err: unknown): string {
   if (!(err instanceof ApiError)) {
     return 'Något gick fel. Försök igen.'
   }
+  if (BOT_CHECK_ERRORS[err.message]) return BOT_CHECK_ERRORS[err.message]
   switch (err.message) {
     case 'hold_expired':
       return 'Tiden för att slutföra bokningen gick ut och bordet släpptes. Börja om.'

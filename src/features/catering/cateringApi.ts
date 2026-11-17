@@ -1,5 +1,6 @@
 import { apiGet, apiPost, ApiError } from '../../shared/api'
 import { withAttribution } from '../../shared/visits'
+import { BOT_CHECK_ERRORS } from '../../shared/botCheckMessages'
 import { CATERING_TOKEN_PREFIX } from '../../shared/storageRegistry'
 
 /**
@@ -192,7 +193,6 @@ export interface RequestInput extends QuoteInput {
   notes?: string
   acceptTerms: true
   language: 'sv'
-  turnstileToken?: string
   /** Gästen kryssade i "skicka mig erbjudanden" (äldre backend). */
   marketingOptIn?: boolean
   /** Frivilligt samtycke till erbjudanden (shared/MarketingConsent.tsx). */
@@ -380,6 +380,7 @@ export function bankIdMessage(hintCode: string | undefined, sameDevice: boolean)
 }
 
 const ERRORS: Record<string, string> = {
+  ...BOT_CHECK_ERRORS,
   catering_disabled: 'Restaurangen tar inte emot cateringförfrågningar just nu.',
   catering_too_soon: 'Datumet är för nära - välj ett senare datum.',
   catering_closed_day: 'Restaurangen har stängt den dagen. Välj ett annat datum.',
@@ -432,7 +433,6 @@ export function errorMessage(err: unknown): string {
   if (/^phone/.test(err.message)) return 'Fyll i ett giltigt mobilnummer.'
   if (/^email/.test(err.message)) return 'Fyll i en giltig e-postadress.'
   if (/^deliveryAddress/.test(err.message)) return 'Fyll i leveransadressen (gata, postnummer och ort).'
-  if (/^turnstile/.test(err.message)) return 'Bekräfta säkerhetskontrollen och försök igen.'
   if (err.status === 404) return 'Förfrågan hittades inte. Kontrollera länken.'
   if (err.status === 429) return ERRORS.too_many_requests
   if (err.status === 400) return `Kontrollera uppgifterna: ${err.message}`

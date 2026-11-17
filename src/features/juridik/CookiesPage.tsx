@@ -76,8 +76,8 @@ export default function CookiesPage() {
           sätter där sina egna cookies mot kortbedrägerier.
         </li>
         <li>
-          <strong>Cloudflare Turnstile</strong> kontrollerar att en bokning, beställning eller
-          cateringförfrågan görs av en människa.
+          <strong>Booqys säkerhetskontroll (AWS WAF)</strong> kontrollerar att en bokning, beställning
+          eller förfrågan görs av en människa och sätter då cookien aws-waf-token.
         </li>
       </ul>
 
