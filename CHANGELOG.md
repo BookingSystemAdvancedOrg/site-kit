@@ -4,6 +4,33 @@ All notable changes to `@bookingsystemadvancedorg/site-kit`. Semver: removing or
 anything exported from `index.ts`, `testing.ts` or `styles.css` (including a
 CSS variable or class name a site styles) is a major version.
 
+## 0.4.0 (2026-11-18)
+
+- Card guarantee for a booking made by phone: the guest's SMS links to
+  `/bokning/<plats>/<id>#<token>`, and while the booking is `pending` with
+  `setup` in the guest view, `ManageBookingPage` shows the same card step as
+  the booking flow (`GuaranteeStep`, with the booking's details above the
+  terms): "0 kr dras nu." and the fees for the party from the booking's
+  `guarantee` snapshot. Stripe's `return_url` is the same manage page, which
+  finishes the booking (`POST .../confirm` with the manage token) and shows
+  the saved card guarantee. The hold time is the real time left from
+  `setup.expiresAt` (falls back to `pendingExpiresAt`), so a 30 min phone hold
+  reads right. Pending without `setup` keeps "Bokningen blev inte klar",
+  except with `setupUnavailable` while the hold still runs (Stripe could not
+  be asked): then "Kortformuläret kunde inte hämtas just nu", the time the
+  table is held until and "Försök igen". Back from a failed or cancelled
+  3-D Secure (`redirect_status` not `succeeded`) the card form shows the
+  bank error; Stripe's query parameters are removed from the address.
+- `GuaranteeStep` takes optional `children`, shown under its intro, and
+  `initialError`, shown at the card form.
+- `GuestReservation`: `setup` is documented for the manage page too; new
+  optional `pendingExpiresAt` and `setupUnavailable`.
+- `NOTHING_CHARGED` is now "0 kr dras nu." (card step, `GuaranteeNotice`,
+  terms list while pending).
+- `BackButton` from customer-front-end (origin/dev d7b9c3d): one secondary
+  pill with an arrow for order checkout, cart edit, payment and the catering
+  offer.
+
 ## 0.3.0 (2026-11-17)
 
 Caught up with `customer-front-end/packages/site-kit` (origin/dev bf3e23f,
