@@ -4,6 +4,100 @@ All notable changes to `@bookingsystemadvancedorg/site-kit`. Semver: removing or
 anything exported from `index.ts`, `testing.ts` or `styles.css` (including a
 CSS variable or class name a site styles) is a major version.
 
+## Unreleased: site languages, booking horizon
+
+- Languages: Swedish (default), English, Spanish, Arabic and Persian on every
+  site. `SiteProvider` now includes `LanguageProvider`; new exports
+  `LanguagePicker`, `LanguageProvider`, `useLanguage`, `useKeepTerms`,
+  `LANGUAGES`, `PICKER_LABEL`, `DEFAULT_LANG`, `isLang`, `currentLang`, `Flag`,
+  `MachineTranslationNote`, `formatDate`, `formatTime`, `formatWeekday`,
+  `formatNumber`, `LANG_KEY` and the types `Lang`, `Language`,
+  `LanguageContextValue`. See README "Languages".
+- The page translator (`shared/lang/translator.ts`) translates text and the
+  `placeholder`, `aria-label`, `aria-description`, `alt` and `title`
+  attributes in place through `POST /translate` (`/api/translate` behind the
+  WAF: added to the guarded paths), with memory and `sessionStorage` caches
+  (`booqy-lang-cache:{språk}`). `booqy-lang` (localStorage) holds the choice;
+  Anar's `anar-lang` is moved over once. Both keys are in the storage registry.
+- `Select`: optional `valueLabel` (button content), `listLabel` (list name and
+  sheet title), `noTranslate` and `align` ('end' anchors the list to the
+  button's end edge; the list also follows `dir="rtl"`).
+- `translate="no"` on dish names, cart and order lines, codes, the
+  restaurant and location names the kit draws, `PhoneLink` (also `dir="ltr"`),
+  `Plate` and every guest value shown back (manage booking, order status,
+  checkout, catering request, tickets). Floor plans and the opening hours
+  table are `dir="ltr"`.
+- RTL: the kit's and the vendored brand styles use logical properties
+  (`margin-inline-*`, `padding-inline-*`, `inset-inline-*`, `text-align:
+  start/end`, `border-inline-*`); back arrows and progress bars flip in RTL.
+  New stylesheet `styles/lang.css` (picker, flags, note, pending state).
+- Legal pages and `GuaranteeTermsText` show `MachineTranslationNote` outside
+  Swedish. Bookings send `language: 'en'` for en, es, ar and fa; Stripe's
+  locale follows the language (fa falls back to en).
+- Live test fixes: the first-load veil now lasts until the page's first data
+  (menu, catering) is fetched and translated, at most 2.5 s, with a thin
+  loading bar (`.lang-veil-bar`); menu and catering data are translated before
+  they are rendered (new export `prefetchTexts`), so no text is swapped in
+  front of the guest (layout shift in ar and fa). Textarea placeholders, iframe
+  titles (not Stripe or the WAF) and the page description in `<head>`
+  (`meta[name=description]`, `og:title`, `og:description`) are translated.
+  Clock times are sent as a template, so a countdown ("Bordet hålls i 14:59")
+  is one translation; "kl" before a time is dropped outside Swedish. The
+  picker shows a small dot and a hand-written note (`PARTIAL_NOTE`) when part
+  of the page could not be translated. Split sentences joined (hold banner,
+  booking summary, booking length, queue offer, last order, restaurant name
+  sentences); catering dish lists in packages are `translate="no"`; catering
+  prices read "per portion" and "per gäst"; the booking date tiles show the
+  weekday and month in the guest's language (Intl, `translate="no"`); "Till
+  slutet av dagen" in the storage list is reworded so it translates.
+- Booking: "Fler än 12 personer? Ring ..." is one text node before the phone
+  link (and one sentence without a phone), so it is translated as a whole.
+- Booking horizon: the date list runs from today through today + 21 days,
+  whole days in the restaurant's time zone (22 dates; it was 21, today to
+  today + 20), the same rule as the server, which now accepts every time on
+  the last day. New export `bookingApi.BOOKING_HORIZON_DAYS` (21);
+  `bookableDates(today)` returns 22 dates by default (the optional second
+  argument is still the number of dates). The "more than N days ahead"
+  refusal reads "Det går att boka högst N dagar fram." with N from the server.
+
+## 0.4.0 (2026-11-18)
+
+- Table picker (step 3, 2D and 3D): tables that can be booked for the party
+  are warm and light and breathe slowly (2.4 s, all in step); tables of the
+  wrong size are dimmed and their title and tap say "För litet bord för 6" /
+  "För stort bord för 2"; booked is muted red; the chosen table is filled and
+  lifts. The legend matches. Picking a table (on the plan or its button) pops
+  it, sends a ring out from it and lights its button for 0.5 s; then the page
+  glides (about 0.6 s, eased) to Bekräfta bord and focus moves there. After
+  the hold the page glides to the steps and focus moves to "Dina uppgifter".
+  No animation with reduced motion. New colour tokens `--seat-free-hi`,
+  `--seat-glow`, `--seat-ring`, `--seat-free-ink` (dark text on the light tables) (with the existing `--seat-*`); the state
+  rules live in `styles/table-picker.css`. Tables carry `data-table-id`.
+- Card guarantee for a booking made by phone: the guest's SMS links to
+  `/bokning/<plats>/<id>#<token>`, and while the booking is `pending` with
+  `setup` in the guest view, `ManageBookingPage` shows the same card step as
+  the booking flow (`GuaranteeStep`, with the booking's details above the
+  terms): "0 kr dras nu." and the fees for the party from the booking's
+  `guarantee` snapshot. Stripe's `return_url` is the same manage page, which
+  finishes the booking (`POST .../confirm` with the manage token) and shows
+  the saved card guarantee. The hold time is the real time left from
+  `setup.expiresAt` (falls back to `pendingExpiresAt`), so a 30 min phone hold
+  reads right. Pending without `setup` keeps "Bokningen blev inte klar",
+  except with `setupUnavailable` while the hold still runs (Stripe could not
+  be asked): then "Kortformuläret kunde inte hämtas just nu", the time the
+  table is held until and "Försök igen". Back from a failed or cancelled
+  3-D Secure (`redirect_status` not `succeeded`) the card form shows the
+  bank error; Stripe's query parameters are removed from the address.
+- `GuaranteeStep` takes optional `children`, shown under its intro, and
+  `initialError`, shown at the card form.
+- `GuestReservation`: `setup` is documented for the manage page too; new
+  optional `pendingExpiresAt` and `setupUnavailable`.
+- `NOTHING_CHARGED` is now "0 kr dras nu." (card step, `GuaranteeNotice`,
+  terms list while pending).
+- `BackButton` from customer-front-end (origin/dev d7b9c3d): one secondary
+  pill with an arrow for order checkout, cart edit, payment and the catering
+  offer.
+
 ## 0.3.0 (2026-11-17)
 
 Caught up with `customer-front-end/packages/site-kit` (origin/dev bf3e23f,
