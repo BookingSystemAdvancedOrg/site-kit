@@ -50,6 +50,8 @@ CSS variable or class name a site styles) is a major version.
   prices read "per portion" and "per gäst"; the booking date tiles show the
   weekday and month in the guest's language (Intl, `translate="no"`); "Till
   slutet av dagen" in the storage list is reworded so it translates.
+- Booking: "Fler än 12 personer? Ring ..." is one text node before the phone
+  link (and one sentence without a phone), so it is translated as a whole.
 
 ## 0.4.0 (2026-11-18)
 
