@@ -9,9 +9,12 @@ CSS variable or class name a site styles) is a major version.
 First release after 0.3.0 (0.4.0 below was never published), so sites move
 from 0.3.0 straight to 0.5.0 and get both sections.
 
-- Removed: the `.pay-back` class (from `styles.css` and the markup), and the
-  checkbox styles no longer read `--control-bg` or `--control-line` (the boxes
-  draw from `--ink`, see 0.4.0's checkbox fix). No site used either.
+- Checkboxes (`.booking-check`) are visible before hover again: they draw
+  their border and fill from `--ink` instead of `--control-bg` and
+  `--control-line`, which no theme defined. Sites can delete their checkbox
+  override.
+- Removed: the `.pay-back` class (from `styles.css` and the markup) and the
+  checkbox variables `--control-bg` and `--control-line`. No site used them.
 
 - Languages: Swedish (default), English, Spanish, Arabic and Persian on every
   site. `SiteProvider` now includes `LanguageProvider`; new exports
