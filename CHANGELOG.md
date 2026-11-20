@@ -34,6 +34,22 @@ CSS variable or class name a site styles) is a major version.
 - Legal pages and `GuaranteeTermsText` show `MachineTranslationNote` outside
   Swedish. Bookings send `language: 'en'` for en, es, ar and fa; Stripe's
   locale follows the language (fa falls back to en).
+- Live test fixes: the first-load veil now lasts until the page's first data
+  (menu, catering) is fetched and translated, at most 2.5 s, with a thin
+  loading bar (`.lang-veil-bar`); menu and catering data are translated before
+  they are rendered (new export `prefetchTexts`), so no text is swapped in
+  front of the guest (layout shift in ar and fa). Textarea placeholders, iframe
+  titles (not Stripe or the WAF) and the page description in `<head>`
+  (`meta[name=description]`, `og:title`, `og:description`) are translated.
+  Clock times are sent as a template, so a countdown ("Bordet hålls i 14:59")
+  is one translation; "kl" before a time is dropped outside Swedish. The
+  picker shows a small dot and a hand-written note (`PARTIAL_NOTE`) when part
+  of the page could not be translated. Split sentences joined (hold banner,
+  booking summary, booking length, queue offer, last order, restaurant name
+  sentences); catering dish lists in packages are `translate="no"`; catering
+  prices read "per portion" and "per gäst"; the booking date tiles show the
+  weekday and month in the guest's language (Intl, `translate="no"`); "Till
+  slutet av dagen" in the storage list is reworded so it translates.
 
 ## 0.4.0 (2026-11-18)
 

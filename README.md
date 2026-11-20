@@ -58,7 +58,13 @@ site.
   `alt` and `title` attributes are translated in place (`shared/lang/translator.ts`),
   including portals and the restaurant's own data (menu descriptions,
   categories, about). React keeps working: nodes are never moved or wrapped.
-  The first pass hides `#root` for at most 1.2 s; cached strings never flash.
+  The first pass hides `#root` (a thin loading bar shows) until the page's
+  first data is fetched and translated, at most 2.5 s; cached strings never
+  flash. Data a site fetches itself can be translated before it is rendered
+  with `await prefetchTexts(texts)` (no text swap, no layout shift).
+  Textarea placeholders, iframe titles and the page description in `<head>`
+  are translated too. If part of a page could not be translated, the picker
+  shows a small dot with a note.
 - Mark what must never change with `translate="no"`: the restaurant's name,
   addresses, phone, e-mail, org number, dish names and every guest value you
   show back. The kit already marks its own (dish names, guest data, codes).
