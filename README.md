@@ -38,6 +38,47 @@ A fully custom design can skip the components and use the hooks
 (`useSite`, `useMenuList`, `useLocationInfo`, `useStickyCart`, `useTheme`)
 and the API namespaces (`bookingApi`, `orderApi`, `cateringApi`, ...).
 
+## Languages
+
+Guests can show the whole site in Swedish (default), English, Spanish, Arabic
+or Persian. Swedish is the source; the rest is machine translated with Amazon
+Translate through `POST /translate` (as `/api/translate` on the site's own
+domain, behind the same AWS WAF as the forms) and cached per string for every
+site.
+
+- `SiteProvider` has the `LanguageProvider` built in: nothing to wire up. The
+  language comes from `?lang=xx`, then the guest's stored choice (`booqy-lang`),
+  then Swedish. `<html lang>` and `<html dir>` follow it (`rtl` for ar and fa).
+- Put `<LanguagePicker className="site-header-lang" />` in the top bar, at the
+  right (after the open-now chip, before the theme toggle; on phones next to the
+  burger). It is the kit `Select` with a flag and the code on the button and
+  flag, native name and code on each row; `flags={{ fa: <MyFlag /> }}` swaps a
+  flag. A ring runs round the flag while translations load.
+- Every text node and the `placeholder`, `aria-label`, `aria-description`,
+  `alt` and `title` attributes are translated in place (`shared/lang/translator.ts`),
+  including portals and the restaurant's own data (menu descriptions,
+  categories, about). React keeps working: nodes are never moved or wrapped.
+  The first pass hides `#root` for at most 1.2 s; cached strings never flash.
+- Mark what must never change with `translate="no"`: the restaurant's name,
+  addresses, phone, e-mail, org number, dish names and every guest value you
+  show back. The kit already marks its own (dish names, guest data, codes).
+  Names in sentences are protected server side: the tenant, location and
+  address names automatically, extra ones with `useLanguage().keep(terms)` or
+  `useKeepTerms(terms)`.
+- Copy a site translated by hand: put `data-lang-own` on its wrapper while that
+  language is shown and the translator leaves it alone (`useLanguage().lang`).
+- Use logical CSS properties (`margin-inline-start`, `inset-inline-end`,
+  `text-align: start`) so Arabic and Persian lay out right to left; the kit's
+  styles do. Floor plans and the opening hours table stay left to right.
+- Legal pages and the booking terms show `MachineTranslationNote` (hand
+  written: the Swedish text applies) with a button back to Swedish.
+- Bookings send `language: 'en'` for en, es, ar and fa, so foreign guests get
+  the English SMS and e-mail. Stripe's card form follows the language
+  (Persian shows English).
+- Dates and numbers for a site's own copy: `formatDate`, `formatTime`,
+  `formatWeekday`, `formatNumber` (Intl, Latin digits, Gregorian calendar);
+  render them inside `translate="no"`.
+
 ## Theming
 
 Components read CSS variables from `theme.css` (colours `--ink`, `--surface`,

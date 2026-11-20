@@ -4,6 +4,37 @@ All notable changes to `@bookingsystemadvancedorg/site-kit`. Semver: removing or
 anything exported from `index.ts`, `testing.ts` or `styles.css` (including a
 CSS variable or class name a site styles) is a major version.
 
+## Unreleased: site languages
+
+- Languages: Swedish (default), English, Spanish, Arabic and Persian on every
+  site. `SiteProvider` now includes `LanguageProvider`; new exports
+  `LanguagePicker`, `LanguageProvider`, `useLanguage`, `useKeepTerms`,
+  `LANGUAGES`, `PICKER_LABEL`, `DEFAULT_LANG`, `isLang`, `currentLang`, `Flag`,
+  `MachineTranslationNote`, `formatDate`, `formatTime`, `formatWeekday`,
+  `formatNumber`, `LANG_KEY` and the types `Lang`, `Language`,
+  `LanguageContextValue`. See README "Languages".
+- The page translator (`shared/lang/translator.ts`) translates text and the
+  `placeholder`, `aria-label`, `aria-description`, `alt` and `title`
+  attributes in place through `POST /translate` (`/api/translate` behind the
+  WAF: added to the guarded paths), with memory and `sessionStorage` caches
+  (`booqy-lang-cache:{språk}`). `booqy-lang` (localStorage) holds the choice;
+  Anar's `anar-lang` is moved over once. Both keys are in the storage registry.
+- `Select`: optional `valueLabel` (button content), `listLabel` (list name and
+  sheet title), `noTranslate` and `align` ('end' anchors the list to the
+  button's end edge; the list also follows `dir="rtl"`).
+- `translate="no"` on dish names, cart and order lines, codes, the
+  restaurant and location names the kit draws, `PhoneLink` (also `dir="ltr"`),
+  `Plate` and every guest value shown back (manage booking, order status,
+  checkout, catering request, tickets). Floor plans and the opening hours
+  table are `dir="ltr"`.
+- RTL: the kit's and the vendored brand styles use logical properties
+  (`margin-inline-*`, `padding-inline-*`, `inset-inline-*`, `text-align:
+  start/end`, `border-inline-*`); back arrows and progress bars flip in RTL.
+  New stylesheet `styles/lang.css` (picker, flags, note, pending state).
+- Legal pages and `GuaranteeTermsText` show `MachineTranslationNote` outside
+  Swedish. Bookings send `language: 'en'` for en, es, ar and fa; Stripe's
+  locale follows the language (fa falls back to en).
+
 ## 0.4.0 (2026-11-18)
 
 - Table picker (step 3, 2D and 3D): tables that can be booked for the party
