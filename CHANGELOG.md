@@ -4,7 +4,7 @@ All notable changes to `@bookingsystemadvancedorg/site-kit`. Semver: removing or
 anything exported from `index.ts`, `testing.ts` or `styles.css` (including a
 CSS variable or class name a site styles) is a major version.
 
-## Unreleased: site languages
+## Unreleased: site languages, booking horizon
 
 - Languages: Swedish (default), English, Spanish, Arabic and Persian on every
   site. `SiteProvider` now includes `LanguageProvider`; new exports
@@ -52,6 +52,13 @@ CSS variable or class name a site styles) is a major version.
   slutet av dagen" in the storage list is reworded so it translates.
 - Booking: "Fler än 12 personer? Ring ..." is one text node before the phone
   link (and one sentence without a phone), so it is translated as a whole.
+- Booking horizon: the date list runs from today through today + 21 days,
+  whole days in the restaurant's time zone (22 dates; it was 21, today to
+  today + 20), the same rule as the server, which now accepts every time on
+  the last day. New export `bookingApi.BOOKING_HORIZON_DAYS` (21);
+  `bookableDates(today)` returns 22 dates by default (the optional second
+  argument is still the number of dates). The "more than N days ahead"
+  refusal reads "Det går att boka högst N dagar fram." with N from the server.
 
 ## 0.4.0 (2026-11-18)
 
