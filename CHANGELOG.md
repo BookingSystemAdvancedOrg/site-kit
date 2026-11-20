@@ -4,7 +4,14 @@ All notable changes to `@bookingsystemadvancedorg/site-kit`. Semver: removing or
 anything exported from `index.ts`, `testing.ts` or `styles.css` (including a
 CSS variable or class name a site styles) is a major version.
 
-## Unreleased: site languages, booking horizon
+## 0.5.0 (2026-11-21)
+
+First release after 0.3.0 (0.4.0 below was never published), so sites move
+from 0.3.0 straight to 0.5.0 and get both sections.
+
+- Removed: the `.pay-back` class (from `styles.css` and the markup), and the
+  checkbox styles no longer read `--control-bg` or `--control-line` (the boxes
+  draw from `--ink`, see 0.4.0's checkbox fix). No site used either.
 
 - Languages: Swedish (default), English, Spanish, Arabic and Persian on every
   site. `SiteProvider` now includes `LanguageProvider`; new exports
