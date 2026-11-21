@@ -13,6 +13,10 @@ CSS variable or class name a site styles) is a major version.
 - `DateInput`: on touch screens and below 1024 px the calendar button is
   44 x 44 px (was 32 px), as are the calendar's month arrows. Same icon; the
   field keeps room for it.
+- `DateInput` calendar: weekday headers in the site language from `Intl`
+  (one letter in Arabic and Persian, three in English and Spanish) with
+  `translate="no"`. Before, the page translator wrote full Arabic and Persian
+  day names that pushed Sunday out of the calendar.
 
 ## 0.5.0 (2026-11-21)
 
