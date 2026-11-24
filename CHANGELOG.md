@@ -38,6 +38,27 @@ CSS variable or class name a site styles) is a major version.
 - Order status, waiting for payment: "Oftast några sekunder, ibland
   längre." (Klarna can take longer than a few seconds).
 
+- Booking page (`BookingFlow`): a table id is never shown. The table chips,
+  the hold banner, the "Ditt bord" line, the receipt, the reason texts and
+  the combination note name a table by the label the API sends for the
+  slot's own layout version (availability `label`, the hold's and booking's
+  `tableLabels`), then by its label from the active layout, then neutrally
+  ("Ett bord", "Bordet", "2 bord"). So a slot after a scheduled layout
+  cutover shows the number the staff email and the admin show, and the plans
+  draw the same numbers as the chips. The receipt leaves out the Bord row
+  when a label is unknown.
+- Floor plans number tables over all floors, as the list, the receipt, the
+  admin and the staff email do (floor 2 no longer starts again at "Bord 1"):
+  new optional `labels` prop on `FloorPlanSvg` and `FloorPlan3D`. Without it
+  they number the floor on its own as before.
+- A table's own name is shown as it is ("Bar", not "Bord Bar"), also in the
+  plans' aria-labels and tooltips, the reason texts ("Terrassen har redan en
+  bokning kl 18:00") and the order status sentences ("Vi serverar vid Bar",
+  "vid bord 3", else "vid ditt bord").
+- Reads the new optional API fields: `label` on availability tables and
+  unavailable tables, `tableLabels` on holds and guest reservations. Works
+  against an older API too (layout labels, then the neutral text).
+
 ## 0.5.1 (2026-11-21)
 
 - `MarketingConsent`: the checkbox only has `aria-controls` while the channel
