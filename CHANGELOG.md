@@ -4,7 +4,7 @@ All notable changes to `@bookingsystemadvancedorg/site-kit`. Semver: removing or
 anything exported from `index.ts`, `testing.ts` or `styles.css` (including a
 CSS variable or class name a site styles) is a major version.
 
-## Unreleased
+## 0.6.0 (2026-11-24)
 
 - Payment methods: orders and private catering pay with card (Visa,
   Mastercard), Apple Pay, Google Pay, Swish or Klarna; the table booking
@@ -37,6 +37,21 @@ CSS variable or class name a site styles) is a major version.
   same as the receipt e-mail.
 - Order status, waiting for payment: "Oftast några sekunder, ibland
   längre." (Klarna can take longer than a few seconds).
+- Sites that use `PaymentPanel` with their own button: `PayStatus.paid` is
+  now only true once Stripe says paid; check `PayStatus.processing` too to
+  hide the button while a method settles. `PayOutcome` and `PaidWith` are
+  exported for typing `onPaid` and the API's `paidWith`.
+- Order page: a payment still settling no longer empties the cart (the
+  status page does that once it sees it paid), so "Försök igen" after a
+  declined method keeps the food.
+- A cancelled order whose refund came back (`refundIssue` from the API,
+  Swish declined it): the status page says the restaurant pays back another
+  way instead of promising the method.
+- Catering request page: after three minutes without a confirmation the
+  Betala button comes back with a short note (a declined Swish or Klarna
+  payment also returns with `?betalning=klar`); it no longer waits forever.
+- "Betald med kort" is one text node, so the page translator gets the whole
+  phrase.
 
 - Booking page (`BookingFlow`): a table id is never shown. The table chips,
   the hold banner, the "Ditt bord" line, the receipt, the reason texts and
