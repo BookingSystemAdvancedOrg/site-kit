@@ -4,6 +4,40 @@ All notable changes to `@bookingsystemadvancedorg/site-kit`. Semver: removing or
 anything exported from `index.ts`, `testing.ts` or `styles.css` (including a
 CSS variable or class name a site styles) is a major version.
 
+## Unreleased
+
+- Payment methods: orders and private catering pay with card (Visa,
+  Mastercard), Apple Pay, Google Pay, Swish or Klarna; the table booking
+  card guarantee takes card, Apple Pay or Google Pay. No PayPal.
+- `PaymentTicket` / `PaymentPanel`: "Betalt" is stamped only when Stripe
+  says the session is complete and paid (or needs no payment). Complete but
+  unpaid (a method still settling) shows "Betalningen behandlas" without the
+  green stamp or confetti, then hands over to the status page as before.
+  `onPaid` now gets `'paid'` or `'processing'` (a callback without the
+  argument still works); `PayStatus` has an optional `processing`.
+  `PaidStamp` takes `pending` for the processing look (`.pay-done.is-pending`).
+  The catering request page shows the same processing stamp after a
+  redirect back (`?betalning=klar`) until the webhook confirms; "Betalt"
+  only when Stripe said paid on the page.
+- Payment Element: on screens below 768 px the methods are a radio list
+  (accordion), tabs from 768 px; chosen when the form is drawn. Apple Pay
+  and Google Pay explicitly `auto`, Link stays off (also in `GuaranteeStep`).
+- Copy without "kort" where Swish or Klarna are possible: `SecureNote`
+  default and the order pay step ("Dina betaluppgifter går direkt dit"),
+  the catering offer ("Betalas här på sidan direkt efter signering") and
+  form ("Du betalar online"), the order status page (failed payment; a
+  cancelled order's refund goes back "till ditt kort", "via Swish, oftast
+  inom några minuter" or "via Klarna", as the receipt e-mail says). The guarantee intro
+  says Apple Pay and Google Pay work too.
+- How the guest paid: `orderApi.GuestOrder` and `cateringApi.GuestRequest`
+  have `paidWith?` (`{ method, brand?, last4? }`). The order status page and
+  a paid private catering request show "Betald med Swish", "Betald med Visa
+  ****4242" or "Betald med Apple Pay" under the total (`.paid-with`, the
+  name with `translate="no"`). Labels in `shared/payment/paidWith.ts`, the
+  same as the receipt e-mail.
+- Order status, waiting for payment: "Oftast några sekunder, ibland
+  längre." (Klarna can take longer than a few seconds).
+
 ## 0.5.1 (2026-11-21)
 
 - `MarketingConsent`: the checkbox only has `aria-controls` while the channel
