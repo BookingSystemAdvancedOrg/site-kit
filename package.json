@@ -1,6 +1,6 @@
 {
   "name": "@bookingsystemadvancedorg/site-kit",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "Booqy's restaurant site logic: API client, tenant resolution, booking, menu, ordering, payment, catering, GDPR and analytics as React components and hooks.",
   "license": "MIT",
   "repository": {

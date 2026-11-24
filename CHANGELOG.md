@@ -4,6 +4,26 @@ All notable changes to `@bookingsystemadvancedorg/site-kit`. Semver: removing or
 anything exported from `index.ts`, `testing.ts` or `styles.css` (including a
 CSS variable or class name a site styles) is a major version.
 
+## 0.6.1 (2026-11-24)
+
+- Guest payments offer only card (Visa, Mastercard; Apple Pay and Google
+  Pay as card wallets), Swish and Klarna; the server turns off anything
+  else a restaurant's Stripe account has on (Amazon Pay, Link ...).
+- The order pay step names only methods the payment actually offers: the
+  redirect hint reads the order response's new optional `methods`
+  (Stripe's types on the session, e.g. `['card', 'swish']`) and says
+  "Med Swish kan du skickas vidare ...", "Med Klarna ..." or "Med Swish
+  eller Klarna ...". Card only, or no list from the server (older API):
+  "Ibland skickas du vidare en kort stund för att godkänna betalningen.",
+  no method named. `OrderCreated` has the optional `methods`.
+- Gift card and event pay steps no longer speak of the card only (their
+  payments can also offer Swish and Klarna): the default `SecureNote`,
+  "Betalningen är inte tillgänglig just nu." / "Betalningen svarar inte
+  just nu ..." and "Försök igen, gärna med ett annat betalsätt.".
+- `PaidWith`: an older payment with Amazon Pay, Revolut Pay or MobilePay
+  (no longer offered) reads "Betald med Amazon Pay" and so on instead of
+  nothing; `PaidWithMethod` has `amazon_pay`, `revolut_pay`, `mobilepay`.
+
 ## 0.6.0 (2026-11-24)
 
 - Payment methods: orders and private catering pay with card (Visa,
