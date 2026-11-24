@@ -4,6 +4,76 @@ All notable changes to `@bookingsystemadvancedorg/site-kit`. Semver: removing or
 anything exported from `index.ts`, `testing.ts` or `styles.css` (including a
 CSS variable or class name a site styles) is a major version.
 
+## 0.6.0 (2026-11-24)
+
+- Payment methods: orders and private catering pay with card (Visa,
+  Mastercard), Apple Pay, Google Pay, Swish or Klarna; the table booking
+  card guarantee takes card, Apple Pay or Google Pay. No PayPal.
+- `PaymentTicket` / `PaymentPanel`: "Betalt" is stamped only when Stripe
+  says the session is complete and paid (or needs no payment). Complete but
+  unpaid (a method still settling) shows "Betalningen behandlas" without the
+  green stamp or confetti, then hands over to the status page as before.
+  `onPaid` now gets `'paid'` or `'processing'` (a callback without the
+  argument still works); `PayStatus` has an optional `processing`.
+  `PaidStamp` takes `pending` for the processing look (`.pay-done.is-pending`).
+  The catering request page shows the same processing stamp after a
+  redirect back (`?betalning=klar`) until the webhook confirms; "Betalt"
+  only when Stripe said paid on the page.
+- Payment Element: on screens below 768 px the methods are a radio list
+  (accordion), tabs from 768 px; chosen when the form is drawn. Apple Pay
+  and Google Pay explicitly `auto`, Link stays off (also in `GuaranteeStep`).
+- Copy without "kort" where Swish or Klarna are possible: `SecureNote`
+  default and the order pay step ("Dina betaluppgifter går direkt dit"),
+  the catering offer ("Betalas här på sidan direkt efter signering") and
+  form ("Du betalar online"), the order status page (failed payment; a
+  cancelled order's refund goes back "till ditt kort", "via Swish, oftast
+  inom några minuter" or "via Klarna", as the receipt e-mail says). The guarantee intro
+  says Apple Pay and Google Pay work too.
+- How the guest paid: `orderApi.GuestOrder` and `cateringApi.GuestRequest`
+  have `paidWith?` (`{ method, brand?, last4? }`). The order status page and
+  a paid private catering request show "Betald med Swish", "Betald med Visa
+  ****4242" or "Betald med Apple Pay" under the total (`.paid-with`, the
+  name with `translate="no"`). Labels in `shared/payment/paidWith.ts`, the
+  same as the receipt e-mail.
+- Order status, waiting for payment: "Oftast några sekunder, ibland
+  längre." (Klarna can take longer than a few seconds).
+- Sites that use `PaymentPanel` with their own button: `PayStatus.paid` is
+  now only true once Stripe says paid; check `PayStatus.processing` too to
+  hide the button while a method settles. `PayOutcome` and `PaidWith` are
+  exported for typing `onPaid` and the API's `paidWith`.
+- Order page: a payment still settling no longer empties the cart (the
+  status page does that once it sees it paid), so "Försök igen" after a
+  declined method keeps the food.
+- A cancelled order whose refund came back (`refundIssue` from the API,
+  Swish declined it): the status page says the restaurant pays back another
+  way instead of promising the method.
+- Catering request page: after three minutes without a confirmation the
+  Betala button comes back with a short note (a declined Swish or Klarna
+  payment also returns with `?betalning=klar`); it no longer waits forever.
+- "Betald med kort" is one text node, so the page translator gets the whole
+  phrase.
+
+- Booking page (`BookingFlow`): a table id is never shown. The table chips,
+  the hold banner, the "Ditt bord" line, the receipt, the reason texts and
+  the combination note name a table by the label the API sends for the
+  slot's own layout version (availability `label`, the hold's and booking's
+  `tableLabels`), then by its label from the active layout, then neutrally
+  ("Ett bord", "Bordet", "2 bord"). So a slot after a scheduled layout
+  cutover shows the number the staff email and the admin show, and the plans
+  draw the same numbers as the chips. The receipt leaves out the Bord row
+  when a label is unknown.
+- Floor plans number tables over all floors, as the list, the receipt, the
+  admin and the staff email do (floor 2 no longer starts again at "Bord 1"):
+  new optional `labels` prop on `FloorPlanSvg` and `FloorPlan3D`. Without it
+  they number the floor on its own as before.
+- A table's own name is shown as it is ("Bar", not "Bord Bar"), also in the
+  plans' aria-labels and tooltips, the reason texts ("Terrassen har redan en
+  bokning kl 18:00") and the order status sentences ("Vi serverar vid Bar",
+  "vid bord 3", else "vid ditt bord").
+- Reads the new optional API fields: `label` on availability tables and
+  unavailable tables, `tableLabels` on holds and guest reservations. Works
+  against an older API too (layout labels, then the neutral text).
+
 ## 0.5.1 (2026-11-21)
 
 - `MarketingConsent`: the checkbox only has `aria-controls` while the channel
