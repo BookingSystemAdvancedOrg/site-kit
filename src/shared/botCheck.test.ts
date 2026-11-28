@@ -59,6 +59,7 @@ describe('isBotChecked', () => {
     for (const path of [
       BOOKING,
       '/locations/loc-1/holds',
+      '/locations/loc-1/reservations/r1/change',
       '/order',
       '/locations/loc-1/catering/requests',
       '/m/signup',
@@ -73,6 +74,8 @@ describe('isBotChecked', () => {
     expect(isBotChecked('GET', BOOKING)).toBe(false)
     expect(isBotChecked('DELETE', '/locations/loc-1/holds')).toBe(false)
     expect(isBotChecked('POST', '/locations/loc-1/reservations/r1/cancel')).toBe(false)
+    expect(isBotChecked('POST', '/locations/loc-1/reservations/r1/change/h1/confirm')).toBe(false)
+    expect(isBotChecked('GET', '/locations/loc-1/reservations/r1/change')).toBe(false)
     expect(isBotChecked('POST', '/m/code')).toBe(false)
   })
 

@@ -36,6 +36,7 @@ describe('@bookingsystemadvancedorg/site-kit public API', () => {
 
   it('groups each API client under its own namespace', () => {
     expect(typeof kit.bookingApi.getAvailability).toBe('function')
+    expect(typeof kit.bookingApi.holdChange).toBe('function')
     expect(typeof kit.orderApi.createOrder).toBe('function')
     expect(typeof kit.cateringApi.createRequest).toBe('function')
     expect(typeof kit.menuApi.getPublicMenu).toBe('function')
@@ -57,5 +58,6 @@ describe('@bookingsystemadvancedorg/site-kit public API', () => {
   it('ships test helpers under /testing', () => {
     expect(typeof testing.WithSite).toBe('function')
     expect(testing.siteConfig().tenant.name).toBe('Testkrogen')
+    expect(testing.guestChangeFake().handle('GET', '/locations/loc-1/reservations/r1/guest', { 'X-Manage-Token': 'tok' })?.status).toBe(200)
   })
 })

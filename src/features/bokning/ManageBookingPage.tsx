@@ -4,12 +4,14 @@ import { ApiError } from '../../shared/api'
 import {
   bookingErrorMessage,
   cancelGuestReservation,
+  confirmChange,
   confirmGuestReservation,
   formatDate,
   formatFee,
   getGuestReservation,
   lengthText,
   manageLink,
+  releaseChange,
 } from '../boka/bookingApi'
 import type { GuestReservation } from '../boka/bookingApi'
 import { GuaranteeConfirmation, GuaranteeStep, GuaranteeTermsText } from '../boka/GuaranteeStep'
@@ -19,6 +21,10 @@ import { SiteContext } from '../../shared/SiteContext'
 import { SkelLines } from '../../shared/Skeleton'
 import { PhoneLink } from '../../shared/PhoneLink'
 import { formatPhoneNational } from '../../shared/phone'
+import { bookedTables } from '../boka/tableNames'
+import { persons } from '../../shared/bookingTerms'
+import { onlineMaxParty } from '../boka/pickerState'
+import { ChangeBooking, CHANGE_LET_GO_TEXT } from './ChangeBooking'
 
 const STATUS_TEXT: Record<string, string> = {
   pending: 'Inte klar',
@@ -49,12 +55,12 @@ export const CARD_REDIRECT_FAILED = 'Kortet kunde inte verifieras av banken. Fö
 /**
  * Tillbaka från Stripe efter 3-D Secure: läser `redirect_status` och tar bort
  * Stripes parametrar ur adressen (klienthemligheten ska inte ligga kvar där).
- * Ger felet att visa vid kortformuläret, eller null.
+ * Ger om gästen kom tillbaka från Stripe och felet att visa vid kortformuläret.
  */
-function stripeRedirectError(): string | null {
+function stripeRedirect(): { returned: boolean; error: string | null } {
   const params = new URLSearchParams(window.location.search)
   const status = params.get('redirect_status')
-  if (!status && !params.has('setup_intent')) return null
+  if (!status && !params.has('setup_intent')) return { returned: false, error: null }
   for (const key of ['setup_intent', 'setup_intent_client_secret', 'redirect_status']) params.delete(key)
   const query = params.toString()
   try {
@@ -63,8 +69,11 @@ function stripeRedirectError(): string | null {
   } catch {
     // Adressen behålls; felet visas ändå.
   }
-  return status && status !== 'succeeded' ? CARD_REDIRECT_FAILED : null
+  return { returned: true, error: status && status !== 'succeeded' ? CARD_REDIRECT_FAILED : null }
 }
+
+/** Ändringen gick igenom (gästen och restaurangen får en bekräftelse). */
+const CHANGED_NOTE = { ok: true, text: 'Bokningen är ändrad. En bekräftelse är på väg till dig.' }
 
 /** "kl 18:32" i restaurangens tidszon. */
 function clockTime(iso: string, timeZone?: string | null): string {
@@ -87,10 +96,48 @@ function BookingSummary({ booking }: { booking: GuestReservation }) {
       <div><dt>Datum</dt><dd>{formatDate(booking.date)}</dd></div>
       <div><dt>Tid</dt><dd>{booking.startTime}-{booking.endTime}</dd></div>
       {lengthText(booking) && <div><dt>Bokningstid</dt><dd>{lengthText(booking)}</dd></div>}
-      <div><dt>Antal</dt><dd>{booking.partySize} personer</dd></div>
+      <div><dt>Antal</dt><dd>{persons(booking.partySize)}</dd></div>
+      {bookedTables(booking) && <div><dt>Bord</dt><dd>{bookedTables(booking)}</dd></div>}
       {booking.location?.address && <div><dt>Adress</dt><dd translate="no">{booking.location.address}</dd></div>}
     </dl>
   )
+}
+
+/**
+ * En påbörjad ändring vid inläsningen. Tillbaka från Stripe efter
+ * kortsteget: slutför ändringen (gästen har redan bekräftat). Annars
+ * släpps det hållna valet, så borden blir lediga för andra igen.
+ */
+async function resumeChange(
+  b: GuestReservation,
+  { locationId, reservationId, token }: { locationId: string; reservationId: string; token: string },
+  redirect: { returned: boolean; error: string | null },
+): Promise<{
+  b: GuestReservation; saved: boolean; note: { ok: boolean; text: string } | null
+}> {
+  const open = b.changeHold
+  if (!open || b.status !== 'reserved') return { b, saved: false, note: null }
+  if (!redirect.returned) {
+    void releaseChange(locationId, reservationId, token, open.holdId).catch(() => undefined)
+    return { b: { ...b, changeHold: null }, saved: false, note: null }
+  }
+  if (redirect.error) {
+    void releaseChange(locationId, reservationId, token, open.holdId).catch(() => undefined)
+    return { b: { ...b, changeHold: null }, saved: false,
+      note: { ok: false, text: `${redirect.error} Din bokning är kvar som förut.` } }
+  }
+  try {
+    const result = await confirmChange(locationId, reservationId, token, open.holdId)
+    if (result.kind === 'changed') {
+      return { b: result.booking, saved: !!result.booking.guarantee?.cardOnFile, note: CHANGED_NOTE }
+    }
+    void releaseChange(locationId, reservationId, token, open.holdId).catch(() => undefined)
+    return { b: { ...b, changeHold: null }, saved: false,
+      note: { ok: false, text: `${CARD_REDIRECT_FAILED} Din bokning är kvar som förut.` } }
+  } catch (err) {
+    const text = err instanceof ApiError && err.message === 'hold_expired' ? CHANGE_LET_GO_TEXT : bookingErrorMessage(err)
+    return { b: { ...b, changeHold: null }, saved: false, note: { ok: false, text } }
+  }
 }
 
 /**
@@ -112,8 +159,13 @@ export default function ManageBookingPage() {
   const [busy, setBusy] = useState(false)
   /** Kortet sparades just här: visa bekräftelsen av kortgarantin. */
   const [cardSaved, setCardSaved] = useState(false)
-  /** Nekad eller avbruten 3-D Secure: visas vid kortformuläret. */
-  const [cardError] = useState(stripeRedirectError)
+  /** Tillbaka från Stripe; nekad eller avbruten 3-D Secure visas vid kortformuläret. */
+  const [redirect] = useState(stripeRedirect)
+  const cardError = redirect.error
+  /** Gästen ändrar bokningen (antal, dag, tid eller bord). */
+  const [changing, setChanging] = useState(false)
+  /** Vad som hände med en ändring: klar, eller varför bokningen är kvar som förut. */
+  const [changeNotice, setChangeNotice] = useState<{ ok: boolean; text: string } | null>(null)
   /** Ökas av "Försök igen" när kortformuläret inte kunde hämtas. */
   const [attempt, setAttempt] = useState(0)
   /** När bokningen senast hämtades (ms): räcker bordets hålltid fortfarande? */
@@ -130,22 +182,38 @@ export default function ManageBookingPage() {
       .then((b) =>
         b.status === 'pending'
           ? confirmGuestReservation(locationId, reservationId, token).then(
-              (done) => ({ b: done, saved: done.status !== 'pending' && !!done.guarantee?.cardOnFile }),
-              () => ({ b, saved: false }),
+              (done) => ({ b: done, saved: done.status !== 'pending' && !!done.guarantee?.cardOnFile, note: null }),
+              () => ({ b, saved: false, note: null }),
             )
-          : { b, saved: false },
+          : resumeChange(b, { locationId, reservationId, token }, redirect),
       )
-      .then(({ b, saved }) => {
+      .then(({ b, saved, note }) => {
         if (cancelled) return
         setBooking(b)
         setCardSaved(saved)
+        setChangeNotice(note)
         setLoadedAt(Date.now())
       })
       .catch((err: unknown) => !cancelled && setError(bookingErrorMessage(err)))
     return () => {
       cancelled = true
     }
-  }, [locationId, reservationId, token, attempt])
+  }, [locationId, reservationId, token, attempt, redirect])
+
+  /** Hämta bokningen igen (efter en ändring som inte gick igenom). */
+  function reload(text: string) {
+    setChanging(false)
+    setChangeNotice({ ok: false, text })
+    getGuestReservation(locationId, reservationId, token)
+      .then((b) => {
+        // Ett val som fortfarande hålls (bordslåset flyttade sig) släpps, så
+        // borden blir lediga för andra igen; gästen väljer om.
+        if (b.changeHold) void releaseChange(locationId, reservationId, token, b.changeHold.holdId).catch(() => undefined)
+        setBooking({ ...b, changeHold: null })
+        setLoadedAt(Date.now())
+      })
+      .catch(() => undefined)
+  }
 
   async function cancel() {
     setBusy(true)
@@ -173,6 +241,36 @@ export default function ManageBookingPage() {
   const fee = booking?.guarantee?.cancellationFee ?? 0
   const site = useContext(SiteContext)
   const tenantName = site?.config.tenant.name
+  const loc = site?.config.locations.find((l) => l.locationId === locationId) ?? site?.location ?? null
+  /** Större än onlinegränsen (bokad per telefon): bara restaurangen kan ändra den. */
+  const overOnlineMax = !!booking && booking.partySize > onlineMaxParty(loc)
+  const canChange = !!booking?.changeable && booking.status === 'reserved'
+
+  if (booking && changing) {
+    return (
+      <ChangeBooking
+        booking={booking}
+        locationId={locationId}
+        token={token}
+        onChanged={(b, saved) => {
+          setBooking(b)
+          setCardSaved(saved)
+          setChanging(false)
+          setChangeNotice(CHANGED_NOTE)
+          setLoadedAt(Date.now())
+          window.scrollTo?.({ top: 0, behavior: 'smooth' })
+        }}
+        onClose={() => {
+          setChanging(false)
+          window.scrollTo?.({ top: 0, behavior: 'smooth' })
+        }}
+        onOutdated={(text) => {
+          reload(text)
+          window.scrollTo?.({ top: 0, behavior: 'smooth' })
+        }}
+      />
+    )
+  }
 
   if (booking?.status === 'pending' && booking.setup) {
     const setup = { ...booking.setup, expiresAt: booking.setup.expiresAt || booking.pendingExpiresAt || '' }
@@ -213,6 +311,11 @@ export default function ManageBookingPage() {
           <p className="booking-status" aria-live="polite">
             {held ? 'Väntar på kortet' : STATUS_TEXT[booking.status] ?? booking.status}
           </p>
+          {changeNotice && (
+            <p className={`notice${changeNotice.ok ? ' is-ok' : ' error'}`} role={changeNotice.ok ? 'status' : 'alert'}>
+              {changeNotice.text}
+            </p>
+          )}
           <BookingSummary booking={booking} />
           {booking.status === 'reserved' && booking.cancellable && (
             <AddToCalendar
@@ -252,10 +355,28 @@ export default function ManageBookingPage() {
               {booking.fee.refundedAmount > 0 && ` (återbetalt ${formatFee(booking.fee.refundedAmount)})`}.
             </p>
           )}
-          {booking.cancellable && !confirming && (
-            <button type="button" className="btn-secondary" onClick={() => setConfirming(true)}>
-              Avboka
-            </button>
+          {!confirming && canChange && overOnlineMax && (
+            <p className="notice" role="note">
+              {`Bokningar för fler än ${onlineMaxParty(loc)} personer ändras av restaurangen${booking.location?.phoneNumber ? '.' : '. Ring restaurangen.'}`}
+            </p>
+          )}
+          {!confirming && ((canChange && !overOnlineMax) || booking.cancellable) && (
+            <div className="booking-actions">
+              {canChange && !overOnlineMax && (
+                <button type="button" className="btn-primary" onClick={() => {
+                  setChangeNotice(null)
+                  setChanging(true)
+                  window.scrollTo?.({ top: 0 })
+                }}>
+                  Ändra bokning
+                </button>
+              )}
+              {booking.cancellable && (
+                <button type="button" className="btn-secondary" onClick={() => setConfirming(true)}>
+                  Avboka
+                </button>
+              )}
+            </div>
           )}
           {booking.cancellable && confirming && (
             <div className="booking-confirm-cancel" role="group" aria-label="Bekräfta avbokning">

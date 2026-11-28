@@ -20,6 +20,8 @@
 const GUARDED: readonly RegExp[] = [
   /^\/locations\/[^/]+\/reservations$/,
   /^\/locations\/[^/]+\/holds$/,
+  // Gästens ändring av sin bokning håller bord på samma sätt.
+  /^\/locations\/[^/]+\/reservations\/[^/]+\/change$/,
   /^\/order$/,
   /^\/locations\/[^/]+\/catering\/requests$/,
   /^\/m\/signup$/,

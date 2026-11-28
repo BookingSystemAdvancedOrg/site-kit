@@ -8,6 +8,7 @@ import { stripeFor } from '../../shared/payment/stripe'
 import { feeLines, formatDeadline, fromSnapshot, NOTHING_CHARGED, persons, WAIVER } from '../../shared/bookingTerms'
 import type { GuaranteeTerms } from '../../shared/site'
 import { MachineTranslationNote } from '../../shared/lang/MachineTranslationNote'
+import { ApiError } from '../../shared/api'
 import { bookingErrorMessage, confirmGuestReservation } from './bookingApi'
 import type { GuestReservation } from './bookingApi'
 
@@ -84,6 +85,40 @@ export function GuaranteeConfirmation({ booking }: { booking: GuestReservation }
   )
 }
 
+/** Kortsteget i en ny bokning eller i en ändring av en bokning (bokningssidan). */
+export type GuaranteeMode = 'booking' | 'change'
+
+const MODE_TEXT: Record<GuaranteeMode, {
+  lede: (left: string) => string
+  busy: string
+  saving: string
+  submit: string
+  expired: string
+  unavailable: string
+  loadFailed: string
+}> = {
+  booking: {
+    lede: (left) =>
+      `Restaurangen tar kortgaranti för den här bokningen. Lägg in ditt kort (Apple Pay och Google Pay går också) så är bordet bokat - det hålls åt dig ${left}.`,
+    busy: 'Kortet kontrolleras hos Stripe och bordet bokas. Det tar bara en liten stund - stäng inte sidan.',
+    saving: 'Sparar kortet…',
+    submit: 'Spara kortet och boka',
+    expired: 'Tiden gick ut och bordet släpptes. Gör en ny bokning.',
+    unavailable: 'Kortbetalningen är inte tillgänglig just nu. Ring restaurangen för att boka.',
+    loadFailed: 'Kortformuläret kunde inte laddas. Ladda om sidan, eller ring restaurangen för att boka.',
+  },
+  change: {
+    lede: (left) =>
+      `Restaurangen tar kortgaranti för ert nya sällskap. Lägg in ditt kort (Apple Pay och Google Pay går också) så ändras bokningen - den nya tiden hålls åt dig ${left}.`,
+    busy: 'Kortet kontrolleras hos Stripe och bokningen ändras. Det tar bara en liten stund - stäng inte sidan.',
+    saving: 'Sparar kortet…',
+    submit: 'Spara kortet och ändra',
+    expired: 'Tiden gick ut. Din bokning är kvar som förut.',
+    unavailable: 'Kortbetalningen är inte tillgänglig just nu. Din bokning är kvar som förut; ring restaurangen för att ändra.',
+    loadFailed: 'Kortformuläret kunde inte laddas. Ladda om sidan, eller ring restaurangen för att ändra.',
+  },
+}
+
 function CardForm({
   booking,
   guest,
@@ -91,6 +126,9 @@ function CardForm({
   returnUrl,
   onConfirmed,
   initialError,
+  mode,
+  confirm,
+  onConfirmError,
 }: {
   booking: GuestReservation
   guest?: GuaranteeGuest
@@ -98,32 +136,44 @@ function CardForm({
   returnUrl: string
   onConfirmed: (b: GuestReservation) => void
   initialError?: string | null
+  mode: GuaranteeMode
+  confirm?: () => Promise<GuestReservation>
+  onConfirmError?: (err: unknown) => boolean
 }) {
+  const text = MODE_TEXT[mode]
   const stripe = useStripe()
   const elements = useElements()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(initialError ?? null)
   const [ready, setReady] = useState(false)
   const [loadFailed, setLoadFailed] = useState(false)
+  /** Stripe har sparat kortet: ett nytt försök bekräftar bara hos oss (SetupIntent är redan klar). */
+  const [cardDone, setCardDone] = useState(false)
 
   async function submit(e: FormEvent) {
     e.preventDefault()
     if (!stripe || !elements || busy) return
     setBusy(true)
     setError(null)
-    const result = await stripe.confirmSetup({
-      elements,
-      redirect: 'if_required',
-      confirmParams: { return_url: returnUrl },
-    })
-    if (result.error) {
-      setError(result.error.message ?? 'Kortet kunde inte sparas. Försök igen.')
-      setBusy(false)
-      return
+    if (!cardDone) {
+      const result = await stripe.confirmSetup({
+        elements,
+        redirect: 'if_required',
+        confirmParams: { return_url: returnUrl },
+      })
+      if (result.error) {
+        setError(result.error.message ?? 'Kortet kunde inte sparas. Försök igen.')
+        setBusy(false)
+        return
+      }
     }
     try {
-      onConfirmed(await confirmGuestReservation(locationId, booking.reservationId, booking.manageToken!))
+      onConfirmed(await (confirm ? confirm() : confirmGuestReservation(locationId, booking.reservationId, booking.manageToken!)))
     } catch (err) {
+      if (onConfirmError?.(err)) return
+      const notConfirmed = err instanceof ApiError && err.message === 'card_not_confirmed'
+      // Kortet är sparat hos Stripe utom när backend säger att det inte är bekräftat.
+      setCardDone(!notConfirmed)
       setError(bookingErrorMessage(err))
       setBusy(false)
     }
@@ -134,7 +184,7 @@ function CardForm({
       {!ready && !loadFailed && <PaymentPrinting label="Skriver ut kortformuläret" />}
       {loadFailed && (
         <p className="notice error" role="alert">
-          Kortformuläret kunde inte laddas. Ladda om sidan, eller ring restaurangen för att boka.
+          {text.loadFailed}
         </p>
       )}
       <div className={`pay-element${ready ? ' is-ready' : ''}`}>
@@ -159,11 +209,11 @@ function CardForm({
       {error && <p className="notice error" role="alert">{error}</p>}
       {busy && (
         <p className="notice is-ok" role="status">
-          Kortet kontrolleras hos Stripe och bordet bokas. Det tar bara en liten stund - stäng inte sidan.
+          {text.busy}
         </p>
       )}
       <button type="submit" className={`btn-primary${busy ? ' is-busy' : ''}`} disabled={!stripe || !ready || busy}>
-        {busy ? <><span className="spinner" aria-hidden="true" />Sparar kortet…</> : 'Spara kortet och boka'}
+        {busy ? <><span className="spinner" aria-hidden="true" />{text.saving}</> : text.submit}
       </button>
     </form>
   )
@@ -178,6 +228,9 @@ export function GuaranteeStep({
   onConfirmed,
   children,
   initialError,
+  mode = 'booking',
+  confirm,
+  onConfirmError,
 }: {
   booking: GuestReservation
   guest?: GuaranteeGuest
@@ -189,7 +242,14 @@ export function GuaranteeStep({
   children?: ReactNode
   /** Ett fel att visa vid formuläret direkt, t.ex. nekad 3-D Secure efter omdirigering. */
   initialError?: string | null
+  /** 'change': kortsteget i en ändring av bokningen (andra ord, egen bekräftelse). */
+  mode?: GuaranteeMode
+  /** Anropas när Stripe sparat kortet, i stället för POST .../confirm. */
+  confirm?: () => Promise<GuestReservation>
+  /** Ett fel från bekräftelsen efter kortet: true när anroparen tog hand om det (annars visas det vid formuläret). */
+  onConfirmError?: (err: unknown) => boolean
 }) {
+  const text = MODE_TEXT[mode]
   const setup = booking.setup!
   const stripePromise = useMemo(
     () => (publishableKey ? stripeFor(publishableKey, setup.stripeAccount) : null),
@@ -210,19 +270,16 @@ export function GuaranteeStep({
     <section className="booking-confirmation guarantee-step step-enter" aria-live="polite">
       <p className="hero-kicker">Nästan klart</p>
       <h1>Kortgaranti</h1>
-      <p>
-        Restaurangen tar kortgaranti för den här bokningen. Lägg in ditt kort (Apple Pay och Google Pay går
-        också) så är bordet bokat - det hålls åt dig {left > 0 ? `i ${left} min till` : 'en kort stund till'}.
-      </p>
+      <p>{text.lede(left > 0 ? `i ${left} min till` : 'en kort stund till')}</p>
       {children}
       <GuaranteeTermsText booking={booking} />
       {!stripePromise ? (
         <p className="notice error" role="alert">
-          Kortbetalningen är inte tillgänglig just nu. Ring restaurangen för att boka.
+          {text.unavailable}
         </p>
       ) : left === 0 ? (
         <p className="notice error" role="alert">
-          Tiden gick ut och bordet släpptes. Gör en ny bokning.
+          {text.expired}
         </p>
       ) : (
         // key: ritas om när ljust/mörkt byts (Stripe uppdaterar inte ett öppet formulär).
@@ -237,7 +294,7 @@ export function GuaranteeStep({
           }}
         >
           <CardForm booking={booking} guest={guest} locationId={locationId} returnUrl={returnUrl} onConfirmed={onConfirmed}
-            initialError={initialError} />
+            initialError={initialError} mode={mode} confirm={confirm} onConfirmError={onConfirmError} />
         </Elements>
       )}
       <SecureNote>Kortuppgifterna går direkt till Stripe och sparas aldrig hos oss.</SecureNote>
