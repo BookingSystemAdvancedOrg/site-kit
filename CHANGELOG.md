@@ -4,6 +4,12 @@ All notable changes to `@bookingsystemadvancedorg/site-kit`. Semver: removing or
 anything exported from `index.ts`, `testing.ts` or `styles.css` (including a
 CSS variable or class name a site styles) is a major version.
 
+## 0.6.2 (2026-11-28)
+
+- Order menu on phones (480 px and below): a dish row with the "Ej för
+  avhämtning" badge puts the badge under the text, so the dish name and
+  description keep their width (they were squeezed to 17 px at 320 px).
+
 ## 0.6.1 (2026-11-24)
 
 - Guest payments offer only card (Visa, Mastercard; Apple Pay and Google
