@@ -4,6 +4,17 @@ All notable changes to `@bookingsystemadvancedorg/site-kit`. Semver: removing or
 anything exported from `index.ts`, `testing.ts` or `styles.css` (including a
 CSS variable or class name a site styles) is a major version.
 
+## 0.7.0 (2026-11-28)
+
+- Dish popup: `DishSheet` (new export) opens when a guest taps a dish, on the
+  menu (`Menu`) and on catering (`CateringPage`): the photo or the letter
+  plate, name, description, allergens, diet and price; Escape, a tap outside
+  or Stäng closes it and focus goes back to the dish.
+- Catering dishes show their photo (`imageKey`, `imageFocus` on
+  `CateringDish`, set in the restaurant's admin); the popup on catering keeps
+  the catering price and has the same Portioner or Gäster field as the row.
+  Catering stays its own list with its own prices.
+
 ## 0.6.3 (2026-11-28)
 
 - Ändra bokning review fixes: a failing confirm after the card step

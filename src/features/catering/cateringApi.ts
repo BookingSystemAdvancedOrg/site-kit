@@ -50,6 +50,10 @@ export interface CateringDish {
   pricePerPortion: number
   allergens?: string[]
   dietary?: string[]
+  /** Rättens foto (menybildernas nyckel, menu-images/...); saknas utan foto och hos äldre API. */
+  imageKey?: string | null
+  /** Fotots fokuspunkt, x och y 0-100 (menuImagePosition). */
+  imageFocus?: { x: number; y: number } | null
 }
 
 export interface CateringPackage {

@@ -1,9 +1,10 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import { Button } from '@booqy/brand'
 import { Plate } from '../../shared/Plate'
+import { DishSheet } from '../../shared/DishSheet'
 import { useMenuList } from './useMenuList'
 import { allergenText, formatPrice, groupByCategory, menuImagePosition, menuImageUrl } from './menuApi'
-import type { MenuCategory } from './menuApi'
+import type { MenuCategory, PublicMenuItem } from './menuApi'
 import { SkelDishes } from '../../shared/Skeleton'
 
 /**
@@ -20,6 +21,7 @@ export function Menu({ hideHeading = false }: {
   const groups = groupByCategory(items, categories)
   const [active, setActive] = useState<MenuCategory | null>(null)
   const sectionRefs = useRef(new Map<MenuCategory, HTMLElement>())
+  const [open, setOpen] = useState<PublicMenuItem | null>(null)
 
   // Kategoriraden markerar den kategori man scrollat till.
   useEffect(() => {
@@ -91,10 +93,14 @@ export function Menu({ hideHeading = false }: {
           <h3 id={`cat-${group.category}`} className="menu-section-title">{group.label}</h3>
           <ul className="dish-list">
             {group.items.map((dish) => (
-              <li className="dish" key={dish.menuItemId}>
+              <li className="dish dish--sheet" key={dish.menuItemId}>
                 <Plate src={menuImageUrl(dish.imageKey)} position={menuImagePosition(dish.imageFocus)} name={dish.name} />
                 <div className="dish-text">
-                  <h4 className="dish-name" translate="no">{dish.name}</h4>
+                  <h4 className="dish-name" translate="no">
+                    <button type="button" className="dish-open" aria-haspopup="dialog" onClick={() => setOpen(dish)}>
+                      {dish.name}
+                    </button>
+                  </h4>
                   {dish.description && <p className="dish-desc">{dish.description}</p>}
                   {allergenText(dish.allergens) && <p className="dish-allergens">{allergenText(dish.allergens)}</p>}
                 </div>
@@ -104,6 +110,19 @@ export function Menu({ hideHeading = false }: {
           </ul>
         </section>
       ))}
+
+      {open && (
+        <DishSheet
+          key={open.menuItemId}
+          name={open.name}
+          description={open.description}
+          imageKey={open.imageKey}
+          imageFocus={open.imageFocus}
+          allergens={open.allergens}
+          priceText={formatPrice(open.price)}
+          onClose={() => setOpen(null)}
+        />
+      )}
 
       <p className="menu-allergy">
         Allergier eller kostavvikelser? Fråga personalen, så hjälper vi dig att hitta rätt.
