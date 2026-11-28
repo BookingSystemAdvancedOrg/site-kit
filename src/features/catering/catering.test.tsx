@@ -11,6 +11,7 @@ import { WithSite } from '../../test/siteFixture'
 import { SiteContext } from '../../shared/SiteContext'
 import { siteConfig } from '../../test/siteData'
 import { formatDate } from '../../shared/DateInput'
+import { configureSiteKit } from '../../config'
 
 const api = vi.hoisted(() => ({
   getSettings: vi.fn(), getTiers: vi.fn(), createRequest: vi.fn(), getRequest: vi.fn(), getQuote: vi.fn(),
@@ -222,6 +223,7 @@ describe('CateringPage', () => {
     expect(screen.getAllByText('Innehåller mjölk')).toHaveLength(2)
     expect(screen.getByText('Glutenfri')).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Alla 40' }))
+    expect(screen.getByLabelText('Gäster Buffé Roma')).toHaveFocus()
     const cart = screen.getByRole('complementary', { name: 'Kalkyl' })
     expect(await within(cart).findByText('40 × Buffé Roma')).toBeInTheDocument()
     await user.type(screen.getByLabelText('Gatuadress'), 'Storgatan 1')
@@ -306,6 +308,94 @@ describe('CateringPage', () => {
     getPublicMenu.mockResolvedValue([])
     render(<WithSite path="/catering"><CateringPage /></WithSite>)
     expect(await screen.findByText(/tar inte emot cateringförfrågningar/)).toBeInTheDocument()
+  })
+})
+
+describe('CateringPage dishes like the menu', () => {
+  const DISH = { dishId: 'd1', name: 'Kycklingspett', description: 'Grillad kyckling med citron', pricePerPortion: 85,
+    allergens: ['milk'], imageKey: 'menu-images/t/loc-1/menu/spett.webp', imageFocus: { x: 30, y: 70 } }
+  beforeEach(() => {
+    configureSiteKit({ menuImageBaseUrl: 'https://cdn.test/' })
+    api.getSettings.mockResolvedValue(SETTINGS)
+    api.getTiers.mockResolvedValue([])
+    api.getQuote.mockResolvedValue(QUOTE)
+  })
+  afterEach(() => configureSiteKit({ menuImageBaseUrl: '' }))
+
+  it('shows the catering photo of a dish that has one, and the plate letter otherwise', async () => {
+    api.getCateringMenu.mockResolvedValue({ dishes: [DISH, { dishId: 'd2', name: 'Sallad', pricePerPortion: 40 }], packages: [
+      { packageId: 'p1', name: 'Buffé', pricePerGuest: 245, dishIds: ['d1'] }] })
+    renderCalculator()
+    const rows = await screen.findByRole('region', { name: 'Rätter' })
+    const img = within(rows).getByRole('img', { name: 'Kycklingspett' })
+    expect(img).toHaveAttribute('src', 'https://cdn.test/menu-images/t/loc-1/menu/spett.webp')
+    expect(img.style.objectPosition).toBe('30% 70%')
+    expect(within(rows).getByText('S')).toHaveClass('plate-initial')
+    // Paketet visar fotot från sin första rätt med foto.
+    expect(within(screen.getByRole('region', { name: 'Paket' })).getByRole('img', { name: 'Buffé' }))
+      .toHaveAttribute('src', 'https://cdn.test/menu-images/t/loc-1/menu/spett.webp')
+  })
+
+  it('a row tap opens the sheet with the catering price, and its quantity is the order', async () => {
+    const user = userEvent.setup()
+    api.getCateringMenu.mockResolvedValue({ dishes: [DISH], packages: [] })
+    renderCalculator()
+    await user.type(await screen.findByLabelText('Antal gäster'), '20')
+    const open = screen.getByRole('button', { name: 'Kycklingspett' })
+    await user.click(open)
+    const sheet = screen.getByRole('dialog', { name: 'Kycklingspett' })
+    expect(within(sheet).getByText('85 kr per portion')).toBeInTheDocument()
+    expect(within(sheet).getByText('Grillad kyckling med citron')).toBeInTheDocument()
+    expect(within(sheet).getByRole('img', { name: 'Kycklingspett' })).toBeInTheDocument()
+    await user.type(within(sheet).getByLabelText('Portioner'), '20')
+    await user.click(within(sheet).getByRole('button', { name: 'Klar' }))
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(open).toHaveFocus()
+    expect(screen.getByLabelText('Portioner Kycklingspett')).toHaveValue(20)
+    await waitFor(() => expect(api.getQuote).toHaveBeenLastCalledWith('loc-1', expect.objectContaining({
+      guests: 20, dishes: [{ dishId: 'd1', quantity: 20 }],
+    })))
+  })
+
+  it('a package sheet asks for guests and offers all of them', async () => {
+    const user = userEvent.setup()
+    api.getCateringMenu.mockResolvedValue({ dishes: [DISH], packages: [
+      { packageId: 'p1', name: 'Buffé', description: 'Varm buffé', pricePerGuest: 245, dishIds: ['d1'], minGuests: 20 }] })
+    renderCalculator()
+    await user.type(await screen.findByLabelText('Antal gäster'), '30')
+    await user.click(screen.getByRole('button', { name: 'Buffé' }))
+    const sheet = screen.getByRole('dialog', { name: 'Buffé' })
+    expect(within(sheet).getByText('245 kr per gäst')).toBeInTheDocument()
+    expect(within(sheet).getByText(/Från 20 gäster/)).toBeInTheDocument()
+    await user.click(within(sheet).getByRole('button', { name: 'Alla 30' }))
+    expect(within(sheet).getByLabelText('Gäster')).toHaveValue(30)
+    expect(within(sheet).queryByRole('button', { name: 'Alla 30' })).toBeNull()
+    expect(within(sheet).getByLabelText('Gäster')).toHaveFocus()
+    await user.keyboard('{Escape}')
+    expect(screen.getByLabelText('Gäster Buffé')).toHaveValue(30)
+  })
+
+  it('a tap on the quantity field does not open the sheet', async () => {
+    const user = userEvent.setup()
+    api.getCateringMenu.mockResolvedValue({ dishes: [DISH], packages: [] })
+    renderCalculator()
+    const input = await screen.findByLabelText('Portioner Kycklingspett')
+    await user.click(input)
+    await user.type(input, '12')
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(input).toHaveValue(12)
+  })
+
+  it('the regular menu fallback opens the same sheet with its photo', async () => {
+    const user = userEvent.setup()
+    api.getCateringMenu.mockResolvedValue({ dishes: [], packages: [] })
+    getPublicMenu.mockResolvedValue([{ menuItemId: 'm1', name: 'Lasagne', description: '', price: 50, category: 'mains',
+      imageKey: 'menu-images/t/loc-1/menu/lasagne.webp' }])
+    renderCalculator()
+    await user.click(await screen.findByRole('button', { name: 'Lasagne' }))
+    const sheet = screen.getByRole('dialog', { name: 'Lasagne' })
+    expect(within(sheet).getByText('50 kr per portion')).toBeInTheDocument()
+    expect(within(sheet).getByRole('img', { name: 'Lasagne' })).toHaveAttribute('src', 'https://cdn.test/menu-images/t/loc-1/menu/lasagne.webp')
   })
 })
 
