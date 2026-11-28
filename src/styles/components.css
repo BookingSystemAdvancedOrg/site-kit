@@ -1321,6 +1321,47 @@
   flex-basis: 100%;
 }
 
+/* Bokningssidan: Ändra bokning och Avboka sida vid sida (staplade på en telefon). */
+.booking-actions,
+.change-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+@media (max-width: 520px) {
+  .booking-actions > button,
+  .change-actions > button {
+    flex: 1 1 100%;
+  }
+}
+
+/* Ändra bokning: bokningen nu och den nya, under varandra. */
+.change-compare {
+  display: grid;
+  gap: 8px;
+}
+
+.booking-summary-line.is-new {
+  border-inline-start: 3px solid var(--gold);
+}
+
+.page-head .change-now {
+  margin: 12px 0 0;
+}
+
+.page-head .back-btn {
+  margin-bottom: 12px;
+}
+
+.change-keep {
+  display: flex;
+  justify-content: center;
+  width: min(720px, 100%);
+  margin: 20px auto 0;
+  padding: 0 16px 48px;
+}
+
 .cell-muted {
   color: var(--muted);
   font-size: 14px;

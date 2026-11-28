@@ -4,6 +4,42 @@ All notable changes to `@bookingsystemadvancedorg/site-kit`. Semver: removing or
 anything exported from `index.ts`, `testing.ts` or `styles.css` (including a
 CSS variable or class name a site styles) is a major version.
 
+## 0.6.3 (2026-11-28)
+
+- Ändra bokning review fixes: a failing confirm after the card step
+  (hold_expired, changed_retry, not_changeable, change_closed) leaves the card
+  form with the change texts and the restaurant's phone; a retry after Stripe
+  saved the card no longer confirms the SetupIntent again (`GuaranteeStep`
+  `onConfirmError`); changed_retry lets a still held pick go; bookings above
+  `maxPartySizeOnline` show that the restaurant changes them instead of
+  Ändra bokning; a party or day change keeps the time and table while they
+  still fit; back from the browser cache after leaving shows the picker
+  again; `HoldBanner` takes `urgentKicker` and `changeLabel`; "1 person".
+- Ändra bokning on the manage page (`ManageBooking`): while the booking is
+  `changeable` the guest picks a new party size, day, time or table with the
+  same picker as Boka bord (tables of the booking itself count as free), the
+  pick is held for 15 minutes with the countdown (`POST .../change`, through
+  the bot check like a table hold), the page shows the booking now and the
+  new one with the new card guarantee fees, and Bekräfta ändringen swaps it
+  (`POST .../change/{holdId}/confirm`). A new party that needs a card gets
+  the card step first on the same clock (`GuaranteeStep` with
+  `mode="change"` and its own `confirm`); back from a 3-D Secure redirect
+  the change finishes by itself. Behåll bokningen som den är and Byt bord
+  let the pick go (`DELETE .../change/{holdId}`), as does leaving the page.
+  Errors say what to do: `table_taken` picks again, `hold_expired` keeps the
+  booking, `changed_retry` reloads it, `change_closed` / `not_changeable`
+  give the restaurant's number.
+- `bookingApi`: `getChangeOptions`, `holdChange`, `confirmChange`,
+  `releaseChange` and the types `ChangeOptions`, `ChangeHold`, `ChangeFees`,
+  `ChangeRequest`, `ChangeResult`; `GuestReservation` has the optional
+  `changeable`, `changeHold` and `changed`.
+- The manage page lists the booking's tables (Bord) when their names are known.
+- `testing`: `guestChangeFake()`, a fake backend for the manage page with
+  Ändra bokning, usable from vitest and Playwright.
+- Internal: the booking picker pieces (party, dates, times, floor plan and
+  table list, hold banner) live in `features/boka/BookingPicker.tsx` and are
+  shared by both flows; Boka bord looks and works as before.
+
 ## 0.6.2 (2026-11-28)
 
 - Order menu on phones (480 px and below): a dish row with the "Ej för

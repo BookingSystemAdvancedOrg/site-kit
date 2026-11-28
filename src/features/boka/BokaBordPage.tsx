@@ -4,12 +4,9 @@ import { Link } from 'react-router-dom'
 import { useSite } from '../../shared/SiteContext'
 import { Slot } from '../../shared/slots'
 import { PhoneInput } from '../../shared/PhoneInput'
-import { Select } from '../../shared/Select'
 import { useLocationInfo } from '../../shared/useLocationInfo'
 import AddToCalendar from '../../shared/AddToCalendar'
 import { bookingEvent, restaurantName } from '../../shared/calendar'
-import { getPublicActiveLayout, groupElementsByFloor, labelTables } from '../../shared/layoutApi'
-import type { FloorGroup, LayoutTableElement } from '../../shared/layoutApi'
 import {
   EMAIL_MAX,
   NAME_MAX,
@@ -17,7 +14,6 @@ import {
   bookableDates,
   HOLD_EXPIRED_TEXT,
   bookingErrorMessage,
-  clockText,
   createReservation,
   dayMessage,
   formatDate,
@@ -36,12 +32,13 @@ import {
 import type { Availability, AvailabilitySlot, GuestReservation, TableHold, TableOption, TableUnavailable } from './bookingApi'
 import { GuaranteeConfirmation, GuaranteeNotice, GuaranteeStep } from './GuaranteeStep'
 import { ApiError } from '../../shared/api'
-import { FloorPlanSvg } from './FloorPlanSvg'
-import { FloorPlan3D } from './FloorPlan3D'
+import { DateTiles, HoldBanner, LargerPartyNote, PartyStepper, TablePlan, TimePills } from './BookingPicker'
+import { sameTables, useFloors, useTableLabels } from './pickerState'
 import { PICK_EFFECT_MS, playPickEffect } from './pickEffect'
 import { tableNames, tableTitle } from './tableNames'
 import { glideTo, prefersReducedMotion } from '../../shared/glide'
 import { FlowSteps } from '../../shared/FlowSteps'
+import { persons } from '../../shared/bookingTerms'
 import { currentLang, language } from '../../shared/lang/languages'
 import { useLanguage } from '../../shared/lang/LanguageContext'
 import { Celebrate } from '../../shared/Celebrate'
@@ -82,60 +79,6 @@ function guestError(g: Guest): { field: GuestField; message: string } | null {
 
 const FORM_ERROR_ID = 'booking-form-error'
 
-/** Veckodag och månad på datumknapparna i gästens språk ("sön", "nov" / "Sun", "Nov"). */
-function tileParts(date: string, locale: string): { weekday: string; month: string } {
-  const [y, m, d] = date.split('-').map(Number)
-  const at = new Date(Date.UTC(y, m - 1, d))
-  const fmt = (o: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat(locale, { ...o, timeZone: 'UTC' }).format(at).replace('.', '')
-  return { weekday: fmt({ weekday: 'short' }), month: fmt({ month: 'short' }) }
-}
-
-/** Kvittot som hänger kvar högst upp medan bordet hålls: vilket bord, hur
- * länge till (klockan och en remsa som töms) och Byt bord. Under två
- * minuter blir det rött. */
-function HoldBanner({ secondsLeft, totalSeconds, tables, onChange }: {
-  secondsLeft: number
-  totalSeconds: number
-  tables: string
-  onChange?: () => void
-}) {
-  const urgent = secondsLeft <= 120
-  const left = totalSeconds > 0 ? Math.min(1, Math.max(0, secondsLeft / totalSeconds)) : 0
-  return (
-    <div className={`hold-banner${urgent ? ' urgent' : ''}`} role="timer" aria-label={`Tid kvar att slutföra bokningen: ${clockText(secondsLeft)}`}>
-      <div className="hold-text">
-        <span className="hold-kicker">{urgent ? 'Snart släpps bordet' : 'Bordet är ditt'}</span>
-        {/* Hela meningar per textnod (översätts som meningar); klockan för sig. */}
-        <span>
-          {`${tables} hålls åt dig:`} <strong className="hold-clock" translate="no">{clockText(secondsLeft)}</strong>
-          {urgent ? ' Slutför bokningen nu.' : null}
-        </span>
-      </div>
-      {onChange && (
-        <button type="button" className="btn-secondary" onClick={onChange}>Byt bord</button>
-      )}
-      <span className="hold-bar" aria-hidden="true"><i style={{ transform: `scaleX(${left})` }} /></span>
-    </div>
-  )
-}
-
-/** Färgförklaringen under planritningen. */
-function FloorLegend() {
-  return (
-    <ul className="floor-legend" aria-label="Förklaring">
-      <li><span className="floor-legend-swatch is-free" aria-hidden="true" />Ledigt</li>
-      <li><span className="floor-legend-swatch is-selected" aria-hidden="true" />Ditt val</li>
-      <li><span className="floor-legend-swatch is-booked" aria-hidden="true" />Bokat</li>
-      <li><span className="floor-legend-swatch is-blocked" aria-hidden="true" />Spärrat</li>
-      <li><span className="floor-legend-swatch is-unfit" aria-hidden="true" />Fel storlek</li>
-    </ul>
-  )
-}
-
-/** Samma bord (ett bord eller samma kombination)? */
-function sameTables(a: TableOption | null, b: TableOption | null): boolean {
-  return Boolean(a && b && a.tableIds.join('+') === b.tableIds.join('+'))
-}
 
 /**
  * Boka bord: datum och sällskap -> tid -> bord på planritningen -> dina
@@ -197,8 +140,6 @@ export default function BokaBordPage() {
   const [slotNotice, setSlotNotice] = useState<{ step: 'time' | 'tables'; text: string } | null>(null)
   // Förklaringen när gästen trycker på ett bord som inte går att välja.
   const [tableInfo, setTableInfo] = useState<string | null>(null)
-  const [floors, setFloors] = useState<FloorGroup[] | null>(null)
-  const [floorId, setFloorId] = useState<string | null>(null)
   // 3D först: det är så gästen känner igen lokalen. 2D finns kvar en knapp bort.
   const [view, setView] = useState<'2d' | '3d'>('3d')
   const [guest, setGuest] = useState<Guest>(EMPTY_GUEST)
@@ -229,10 +170,6 @@ export default function BokaBordPage() {
   const justHeld = useRef(false)
   const terms = location.guarantee ?? null
   const cardNeeded = needsCard(terms, partySize, true)
-  const specialByDate = useMemo(
-    () => new Map((location.specialDays ?? []).map((d) => [d.date, d] as const)),
-    [location.specialDays],
-  )
 
   // Gästens senaste val - läses när en ny lista kommer, utan att varje
   // klick startar en ny hämtning.
@@ -352,21 +289,7 @@ export default function BokaBordPage() {
   }, [enabled, location.locationId, date, partySize, slotsKey, refresh, tick])
 
   // Planritningen (för bordsvalet).
-  useEffect(() => {
-    if (!enabled) return
-    let cancelled = false
-    getPublicActiveLayout(location.locationId)
-      .then((layout) => {
-        if (cancelled) return
-        const groups = groupElementsByFloor(layout)
-        setFloors(groups)
-        setFloorId(groups[0]?.floor?.floorId ?? null)
-      })
-      .catch(() => !cancelled && setFloors([]))
-    return () => {
-      cancelled = true
-    }
-  }, [enabled, location.locationId])
+  const { floors, activeFloor, setFloorId } = useFloors(location.locationId, enabled)
 
   const slots = availability?.slots ?? []
   const slot: AvailabilitySlot | null = slots.find((s) => s.startTime === startTime) ?? null
@@ -383,31 +306,8 @@ export default function BokaBordPage() {
   const hasCombinations = options.some((o) => o.tableIds.length > 1)
   const day = availability?.day ?? null
   const dayText = dayMessage(day, formatPhoneNational(info.phone))
-  const allTables = useMemo(
-    () => (floors ?? []).flatMap((g) => g.elements.filter((e): e is LayoutTableElement => e.type === 'table')),
-    [floors],
-  )
-  const labels = useMemo(() => labelTables(allTables), [allTables])
-  // Serverns namn på borden vid tiden, ur tidens layoutversion. De går före
-  // planritningens (dagens layout): efter ett schemalagt byte av planritning
-  // kan ett bord ha ett annat nummer den dagen gästen bokar.
-  const serverLabels = useMemo(() => {
-    const m = new Map<string, string>()
-    for (const t of [...(slot?.tables ?? []), ...(slot?.unavailable ?? [])]) {
-      const l = t.label?.trim()
-      if (l && !m.has(t.tableId)) m.set(t.tableId, l)
-    }
-    return m
-  }, [slot])
-  /** Bordets namn ("3", "Bar") eller null. Aldrig bordets id. */
-  const nameOf = (id: string): string | null => serverLabels.get(id) ?? labels.get(id) ?? null
-  /** Numren som ritas i planen: samma som i listan. */
-  const planLabels = useMemo(
-    () => (serverLabels.size > 0 ? new Map([...labels, ...serverLabels]) : labels),
-    [labels, serverLabels],
-  )
+  const { nameOf, planLabels } = useTableLabels(floors, slot)
   const optionLabels = option ? option.tableIds.map(nameOf) : []
-  const activeFloor = floors?.find((g) => g.floor?.floorId === floorId) ?? floors?.[0] ?? null
   const nextDate = dates[dates.indexOf(date) + 1] ?? null
 
   // Stegraden: var gästen är. Dag och sällskap har alltid ett giltigt val,
@@ -532,7 +432,7 @@ export default function BokaBordPage() {
       !slot ? 'Välj en tid.'
       : !option ? 'Välj ett bord.'
       : cardNeeded && !config.stripe.publishableKey
-        ? `Onlinebokning för ${partySize} personer kräver kortgaranti, som inte är tillgänglig just nu. Ring oss på ${formatPhoneNational(info.phone) || 'restaurangen'}.`
+        ? `Onlinebokning för ${persons(partySize)} kräver kortgaranti, som inte är tillgänglig just nu. Ring oss på ${formatPhoneNational(info.phone) || 'restaurangen'}.`
       : null
     if (problem) {
       setFormError(problem)
@@ -711,7 +611,7 @@ export default function BokaBordPage() {
           <div><dt>Datum</dt><dd>{formatDate(booked.date)}</dd></div>
           <div><dt>Tid</dt><dd>{booked.startTime}-{booked.endTime}</dd></div>
           {lengthText(booked) && <div><dt>Bokningstid</dt><dd>{lengthText(booked)}</dd></div>}
-          <div><dt>Antal</dt><dd>{`${booked.partySize} personer`}</dd></div>
+          <div><dt>Antal</dt><dd>{persons(booked.partySize)}</dd></div>
           {bookedLabels.every(Boolean) && bookedLabels.length > 0 && (
             <div>
               <dt>Bord</dt>
@@ -772,60 +672,10 @@ export default function BokaBordPage() {
         {!hold && (<>
         <fieldset className="booking-step" disabled={holding}>
           <legend><span className="step-no">1</span>Hur många och när?</legend>
-          <div className="party">
-            <label className="party-label" htmlFor="party-size">Antal personer</label>
-            <div className="party-stepper">
-              <button type="button" className="party-btn" aria-label="En person färre"
-                disabled={partySize <= 1} onClick={() => choosePartySize(partySize - 1)}>
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14" /></svg>
-              </button>
-              <Select
-                id="party-size"
-                value={String(partySize)}
-                onChange={(v) => choosePartySize(Number(v))}
-                options={Array.from({ length: maxParty }, (_, i) => i + 1).map((n) => ({
-                  value: String(n),
-                  label: `${n} ${n === 1 ? 'person' : 'personer'}`,
-                }))}
-              />
-              <button type="button" className="party-btn" aria-label="En person till"
-                disabled={partySize >= maxParty} onClick={() => choosePartySize(partySize + 1)}>
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
-              </button>
-            </div>
-          </div>
-          <p className="cell-muted">
-            {/* One text node per sentence part, so the translator gets the whole question. */}
-            {info.phone
-              ? <>{`Fler än ${maxParty} personer? Ring `}<PhoneLink phone={info.phone} />.</>
-              : `Fler än ${maxParty} personer? Ring restaurangen.`}
-          </p>
-          <div className="booking-dates" role="group" aria-label="Välj datum">
-            {dates.map((d) => {
-              const special = specialByDate.get(d)
-              const mark =
-                special?.kind === 'closed' ? 'Stängt' : special?.kind === 'no_online' ? 'Ring oss' : null
-              return (
-                <button
-                  key={d}
-                  type="button"
-                  className={`date-tile${d === date ? ' active' : ''}${mark ? ' is-special' : ''}`}
-                  title={formatDate(d)}
-                  aria-pressed={d === date}
-                  onClick={() => chooseDate(d)}
-                >
-                  {/* Förkortningar översätts inte ("sön" blev "så långt som"): Intl i gästens språk. */}
-                  {d === today ? (
-                    <span className="date-tile-wd">Idag</span>
-                  ) : (
-                    <span className="date-tile-wd" translate="no">{tileParts(d, intlLocale).weekday}</span>
-                  )}
-                  <span className="date-tile-day">{Number(d.slice(8, 10))}</span>
-                  {mark ? <span className="pill-note">{mark}</span> : <span className="date-tile-mon" translate="no">{tileParts(d, intlLocale).month}</span>}
-                </button>
-              )
-            })}
-          </div>
+          <PartyStepper value={partySize} max={maxParty} onChange={choosePartySize} />
+          <LargerPartyNote max={maxParty} phone={info.phone || undefined} />
+          <DateTiles dates={dates} today={today} value={date} onChange={chooseDate}
+            specialDays={location.specialDays} intlLocale={intlLocale} />
         </fieldset>
 
         <fieldset className="booking-step" disabled={holding}>
@@ -849,7 +699,7 @@ export default function BokaBordPage() {
           {!loadingSlots && dayText && <p className="notice" role="status">{dayText}</p>}
           {!loadingSlots && !slotsError && slots.length === 0 && (!day || day.kind === 'hours') && (
             <div className="notice notice--stack" role="status">
-              <p>{`Inga lediga tider för ${partySize} personer ${formatDate(date)}.`}</p>
+              <p>{`Inga lediga tider för ${persons(partySize)} ${formatDate(date)}.`}</p>
               <p className="cell-muted">Prova en annan dag, eller ändra antalet personer.</p>
               {nextDate && (
                 <button type="button" className="btn-secondary btn-small" onClick={() => chooseDate(nextDate)}>
@@ -860,19 +710,7 @@ export default function BokaBordPage() {
             </div>
           )}
           {slotNotice?.step === 'time' && <p className="notice" role="status">{slotNotice.text}</p>}
-          <div className="booking-times" role="group" aria-label="Välj tid">
-            {slots.map((s) => (
-              <button
-                key={s.startTime}
-                type="button"
-                className={`filter-pill${s.startTime === startTime ? ' active' : ''}`}
-                aria-pressed={s.startTime === startTime}
-                onClick={() => choose(() => setStartTime(s.startTime))}
-              >
-                {s.startTime}
-              </button>
-            ))}
-          </div>
+          <TimePills slots={slots} value={startTime} onChange={(t) => choose(() => setStartTime(t))} />
         </fieldset>
 
         {slot && (
@@ -882,95 +720,32 @@ export default function BokaBordPage() {
               Borden som lyser går att boka för ert sällskap. Tryck på ett mörkt bord så berättar vi varför det inte går.
             </p>
             {slotNotice?.step === 'tables' && <p className="notice" role="status">{slotNotice.text}</p>}
-            {floors === null && (
-              <div className="printing printing--inline" role="status" aria-label="Ritar upp lokalen">
-                <span className="printing__label">Ritar upp lokalen</span>
-                <i /><i /><i />
-              </div>
-            )}
-            {floors && floors.length === 0 && (
-              <p className="cell-muted">Planritningen kan inte visas just nu. Välj bord i listan nedanför.</p>
-            )}
-            {floors && floors.length > 1 && (
-              <div className="filter-row" role="group" aria-label="Välj våning">
-                {floors.map((g) => (
-                  <button
-                    key={g.floor?.floorId ?? 'flat'}
-                    type="button"
-                    className={`filter-pill${activeFloor?.floor?.floorId === g.floor?.floorId ? ' active' : ''}`}
-                    aria-pressed={activeFloor?.floor?.floorId === g.floor?.floorId}
-                    onClick={() => setFloorId(g.floor?.floorId ?? null)}
-                  >
-                    {g.floor?.name ?? 'Planritning'}
-                  </button>
-                ))}
-              </div>
-            )}
-            {activeFloor && (
-              <>
-                <div className="floor-view-toggle" role="group" aria-label="2D eller 3D">
-                  <button type="button" className={view === '2d' ? 'active' : ''} aria-pressed={view === '2d'} onClick={() => setView('2d')}>2D</button>
-                  <button type="button" className={view === '3d' ? 'active' : ''} aria-pressed={view === '3d'} onClick={() => setView('3d')}>3D</button>
-                </div>
-                {view === '2d' ? (
-                  <FloorPlanSvg
-                    group={activeFloor}
-                    ghosts={(floors ?? []).filter((g) => g !== activeFloor)}
-                    free={free}
-                    selected={selected}
-                    onToggle={pickTable}
-                    unavailable={unavailable}
-                    onExplain={explainTable}
-                    partySize={partySize}
-                    labels={planLabels}
-                  />
-                ) : (
-                  <FloorPlan3D
-                    group={activeFloor}
-                    free={free}
-                    selected={selected}
-                    onToggle={pickTable}
-                    unavailable={unavailable}
-                    onExplain={explainTable}
-                    partySize={partySize}
-                    labels={planLabels}
-                  />
-                )}
-                <FloorLegend />
-              </>
-            )}
-            {tableInfo && <p className="notice table-info" role="status">{tableInfo}</p>}
-            <div className="booking-table-list" role="group" aria-label="Lediga bord">
-              {options.map((o) => (
-                <button
-                  key={o.tableIds.join('+')}
-                  data-option={o.tableIds.join('+')}
-                  type="button"
-                  className={`filter-pill${sameTables(o, option) ? ' active' : ''}`}
-                  aria-pressed={sameTables(o, option)}
-                  onClick={() => pickOption(o)}
-                >
-                  {tableNames(o.tableIds.map(nameOf))} · {o.seats} platser
-                  {o.tableIds.length > 1 && <span className="pill-note"> · ställs ihop</span>}
-                </button>
-              ))}
-            </div>
-            {unavailable.size > 0 && (
-              <details className="table-reasons">
-                <summary>Varför kan jag inte välja vissa bord? ({unavailable.size})</summary>
-                <ul>
-                  {[...unavailable.values()].map((u) => (
-                    <li key={u.tableId}>{reasonText(u)}</li>
-                  ))}
-                </ul>
-              </details>
-            )}
+            <TablePlan
+              floors={floors}
+              activeFloor={activeFloor}
+              onFloor={setFloorId}
+              view={view}
+              onView={setView}
+              free={free}
+              selected={selected}
+              unavailable={unavailable}
+              partySize={partySize}
+              planLabels={planLabels}
+              onToggle={pickTable}
+              onExplain={explainTable}
+              tableInfo={tableInfo}
+              options={options}
+              option={option}
+              nameOf={nameOf}
+              onPickOption={pickOption}
+              reasonText={reasonText}
+            />
             {option && !hold && (
               <div className="booking-confirm-tables step-enter" ref={confirmRef}>
                 <p className="booking-summary-line" aria-live="polite">
                   <span className="summary-kicker">Ditt val</span>
                   <span>
-                    {`${formatDate(date)} kl ${slot.startTime}-${slot.endTime} · ${partySize} personer · ${tableNames(option.tableIds.map(nameOf), { word: 'bord' })}`}
+                    {`${formatDate(date)} kl ${slot.startTime}-${slot.endTime} · ${persons(partySize)} · ${tableNames(option.tableIds.map(nameOf), { word: 'bord' })}`}
                   </span>
                 </p>
                 {lengthText(slot) && <p className="cell-muted booking-length">{`Bokningstid: ${lengthText(slot)}.`}</p>}
@@ -1010,7 +785,7 @@ export default function BokaBordPage() {
             <div className="booking-summary-line" aria-live="polite">
               <span className="summary-kicker">Ditt bord</span>
               <span>
-                {`${formatDate(hold.date)} kl ${hold.startTime}-${hold.endTime} · ${hold.partySize} personer · ${tableNames(heldLabels, { word: 'bord' })}`}
+                {`${formatDate(hold.date)} kl ${hold.startTime}-${hold.endTime} · ${persons(hold.partySize)} · ${tableNames(heldLabels, { word: 'bord' })}`}
               </span>
             </div>
             {lengthText(hold) && <p className="cell-muted booking-length">{`Bokningstid: ${lengthText(hold)}.`}</p>}

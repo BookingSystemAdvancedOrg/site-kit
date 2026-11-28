@@ -33,3 +33,9 @@ export function tableNames(
   const parts = numbers.length > 0 ? [`${word} ${numbers.join(join)}`, ...own] : own
   return parts.join(join)
 }
+
+/** Bokningens bord som text ("bord 3"), eller null när något namn saknas. */
+export function bookedTables(b: { tableIds: string[]; tableLabels?: string[] }): string | null {
+  const labels = b.tableIds.map((_, i) => b.tableLabels?.[i]?.trim() || null)
+  return labels.length > 0 && labels.every(Boolean) ? tableNames(labels, { word: 'bord' }) : null
+}

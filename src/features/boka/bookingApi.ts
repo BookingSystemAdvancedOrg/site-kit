@@ -12,6 +12,10 @@ import { tableTitle } from './tableNames'
  *   GET  /locations/{l}/reservations/{r}/guest      min bokning (token)
  *   POST /locations/{l}/reservations/{r}/confirm    kortgarantin klar (token)
  *   POST /locations/{l}/reservations/{r}/cancel     avboka (token)
+ *   GET  /locations/{l}/reservations/{r}/change     tider och bord för en ändring (token)
+ *   POST /locations/{l}/reservations/{r}/change     håll det nya valet i 15 min (token)
+ *   POST .../change/{h}/confirm                     ändra bokningen (200), eller kortsteget (202)
+ *   DELETE .../change/{h}                           behåll bokningen som den är
  *
  * Gästens hanteringstoken skickas som X-Manage-Token-header.
  */
@@ -215,6 +219,12 @@ export interface GuestReservation {
   tableLabels?: string[]
   customerName?: string
   cancellable: boolean
+  /** Gästen får ändra antal, dag, tid eller bord nu (POST .../change). */
+  changeable?: boolean
+  /** Gästens påbörjade ändring (hålls till expiresAt). */
+  changeHold?: { holdId: string; expiresAt: string } | null
+  /** Bara i svaret när ändringen just gjordes. */
+  changed?: boolean
   durationMinutes?: number
   extendable?: boolean
   ruleName?: string | null
@@ -345,6 +355,14 @@ export function bookingErrorMessage(err: unknown, phone?: string): string {
       return 'Kortbetalningen är inte tillgänglig just nu. Försök igen om en stund.'
     case 'fee_applies':
       return 'Avbokningen kostar en avgift. Godkänn avgiften för att avboka.'
+    case 'not_changeable':
+      return `Bokningen kan inte ändras här. Ring restaurangen${phone ? ` på ${phone}` : ''}.`
+    case 'change_closed':
+      return `Det är för nära bokad tid för att ändra här. Ring restaurangen${phone ? ` på ${phone}` : ''}.`
+    case 'card_unavailable':
+      return `Kortgarantin är inte tillgänglig just nu. Ring restaurangen${phone ? ` på ${phone}` : ''} för att ändra.`
+    case 'nothing to change':
+      return 'Välj ett annat antal, en annan dag, tid eller ett annat bord.'
   }
   if (err.status === 404) return 'Bokningen hittades inte. Kontrollera länken.'
   if (err.status === 503 && err.message === 'verification_unavailable') {
@@ -444,6 +462,114 @@ export function confirmGuestReservation(
     `${path(locationId)}/reservations/${encodeURIComponent(reservationId)}/confirm`,
     undefined,
     { 'X-Manage-Token': token },
+  )
+}
+
+// --- gästen ändrar sin bokning (bokningssidan) ------------------------------
+
+/** Lediga tider och bord för en ändring: bokningens egna bord räknas som lediga. */
+export interface ChangeOptions extends Availability {
+  /** Sällskapet behöver lägga in kort innan ändringen går igenom. */
+  cardRequired: boolean
+}
+
+/** Avgifterna efter ändringen (öre för hela sällskapet). */
+export interface ChangeFees {
+  noShowFee: number
+  lateCancelFee: number
+  noShowFeePerPerson?: number
+  lateCancelFeePerPerson?: number
+  cancelCutoffHours: number
+  currency: string
+}
+
+/** Det nya valet, som hålls åt gästen i 15 minuter. Bokningen är oförändrad tills confirm. */
+export interface ChangeHold {
+  holdId: string
+  expiresAt: string
+  holdMinutes: number
+  date: string
+  startTime: string
+  endTime: string
+  tableIds: string[]
+  tableLabels?: string[]
+  partySize: number
+  durationMinutes?: number
+  /** Kortet behövs först (det nya sällskapet kräver kort och inget finns sparat). */
+  cardRequired: boolean
+  fees: ChangeFees | null
+  /** Serverns mening om avgiften efter ändringen ("" utan avgift). */
+  feeText: string
+}
+
+export interface ChangeRequest {
+  date?: string
+  startTime?: string
+  tableIds?: string[]
+  partySize?: number
+}
+
+/** Svaret på confirm: bokningen ändrades, eller kortet behövs först. */
+export type ChangeResult =
+  | { kind: 'changed'; booking: GuestReservation }
+  | { kind: 'card'; setup: { clientSecret: string; stripeAccount: string; expiresAt: string }; expiresAt: string }
+
+const changePath = (locationId: string, reservationId: string) =>
+  `${path(locationId)}/reservations/${encodeURIComponent(reservationId)}/change`
+
+export function getChangeOptions(
+  locationId: string,
+  reservationId: string,
+  token: string,
+  date: string,
+  partySize: number,
+): Promise<ChangeOptions> {
+  return apiGet<ChangeOptions>(
+    `${changePath(locationId, reservationId)}?date=${encodeURIComponent(date)}&partySize=${partySize}`,
+    { 'X-Manage-Token': token },
+  )
+}
+
+/** Gästen valde ny tid, nytt bord eller nytt antal: det hålls i 15 minuter. */
+export function holdChange(
+  locationId: string,
+  reservationId: string,
+  token: string,
+  request: ChangeRequest,
+): Promise<ChangeHold> {
+  return apiPost<ChangeHold>(changePath(locationId, reservationId), request, { 'X-Manage-Token': token })
+}
+
+/** Ändra bokningen till det hållna valet (efter kortsteget: anropas igen). */
+export async function confirmChange(
+  locationId: string,
+  reservationId: string,
+  token: string,
+  holdId: string,
+): Promise<ChangeResult> {
+  const body = await apiPost<GuestReservation & {
+    cardRequired?: boolean
+    setup?: { clientSecret: string; stripeAccount: string; expiresAt: string }
+    expiresAt?: string
+  }>(`${changePath(locationId, reservationId)}/${encodeURIComponent(holdId)}/confirm`, undefined, { 'X-Manage-Token': token })
+  if (body.cardRequired && body.setup && !body.reservationId) {
+    return { kind: 'card', setup: body.setup, expiresAt: body.expiresAt ?? body.setup.expiresAt }
+  }
+  return { kind: 'changed', booking: body }
+}
+
+/** Behåll bokningen som den är: det hållna valet släpps. */
+export function releaseChange(
+  locationId: string,
+  reservationId: string,
+  token: string,
+  holdId: string,
+  { keepalive = false }: { keepalive?: boolean } = {},
+): Promise<{ released: boolean }> {
+  return apiDelete<{ released: boolean }>(
+    `${changePath(locationId, reservationId)}/${encodeURIComponent(holdId)}`,
+    { 'X-Manage-Token': token },
+    { keepalive },
   )
 }
 
