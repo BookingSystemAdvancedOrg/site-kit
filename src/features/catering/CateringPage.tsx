@@ -10,7 +10,7 @@ import { PhoneLink } from '../../shared/PhoneLink'
 import { PhoneInput } from '../../shared/PhoneInput'
 import { formatPhoneNational } from '../../shared/phone'
 import { normalizePhone, validEmail } from '../boka/bookingApi'
-import { DEFAULT_CATEGORIES, getPublicMenuWithCategories, groupByCategory } from '../meny/menuApi'
+import { DEFAULT_CATEGORIES, getPublicMenuWithCategories, groupByCategory, menuImagePosition, menuImageUrl } from '../meny/menuApi'
 import type { MenuCategoryEntry } from '../meny/menuApi'
 import { useStickyCart } from '../../shared/useStickyCart'
 import type { PublicMenuItem } from '../meny/menuApi'
@@ -28,13 +28,15 @@ import {
   nextTier,
   rememberToken,
 } from './cateringApi'
-import type { CateringMenu, CateringSettings, EquipmentReturn, Quote, QuoteInput, Tier } from './cateringApi'
+import type { CateringDish, CateringMenu, CateringSettings, EquipmentReturn, Quote, QuoteInput, Tier } from './cateringApi'
 import { FlowSteps } from '../../shared/FlowSteps'
 import { GuestDataNotice } from '../../shared/GuestDataNotice'
 import { MarketingConsent, NO_CONSENT, consentFields } from '../../shared/MarketingConsent'
 import type { ConsentChoice } from '../../shared/MarketingConsent'
 import { DateInput, TimeInput, formatDate } from '../../shared/DateInput'
 import { SkelCard } from '../../shared/Skeleton'
+import { Plate } from '../../shared/Plate'
+import { DishSheet } from '../../shared/DishSheet'
 
 const STEPS = [{ label: 'Meny' }, { label: 'När & var' }, { label: 'Uppgifter' }, { label: 'Skicka' }]
 /** Väntetid efter senaste ändringen innan priset hämtas på nytt. */
@@ -77,6 +79,7 @@ const addressComplete = (f: Form) => Boolean(f.street.trim() && /^\d{3} ?\d{2}$/
 /** Fältet som ska markeras och få fokus (null när inget enskilt fält är fel). */
 type FieldKey = keyof Form | null
 const ERROR_ID = 'catering-error'
+const SHEET_QTY_ID = 'catering-sheet-qty'
 
 function check(form: Form, guests: number, minGuests: number, chosen: number, dates: { min: string; max: string }): { field: FieldKey; message: string } | null {
   const fail = (field: FieldKey, message: string) => ({ field, message })
@@ -151,6 +154,8 @@ export default function CateringPage() {
   const [quote, setQuote] = useState<Quote | null>(null)
   const [quoteError, setQuoteError] = useState<string | null>(null)
   const [quoting, setQuoting] = useState(false)
+  /** Rätten eller paketet som visas i rutan (samma id som i quantities). */
+  const [sheet, setSheet] = useState<string | null>(null)
 
   useEffect(() => {
     if (!isApiConfigured()) return
@@ -314,18 +319,88 @@ export default function CateringPage() {
     return <p className="notice" role="status">{`${config.tenant.name} tar inte emot cateringförfrågningar just nu.`}</p>
   }
 
-  const qtyInput = (id: string, label: string) => (
+  const qtyInput = (id: string, label: string, inputId?: string) => (
     <input
+      id={inputId}
       type="number"
       min={0}
       max={5000}
       inputMode="numeric"
-      aria-label={label}
+      aria-label={inputId ? undefined : label}
       value={quantities[id] || ''}
       placeholder="0"
+      onClick={(e) => e.stopPropagation()}
       onChange={(e) => setQty(id, Number(e.target.value))}
     />
   )
+  /** Antal gäster för ett paket, med "Alla N" när det inte redan är alla. */
+  const packageQty = (id: string, name: string, inputId?: string) => (
+    <>
+      {qtyInput(id, `Gäster ${name}`, inputId)}
+      {guests > 0 && quantities[id] !== guests && (
+        <button
+          type="button"
+          className="link-button"
+          onClick={(e) => {
+            // Knappen försvinner när värdet blir alla; fokus stannar på fältet bredvid.
+            e.currentTarget.parentElement?.querySelector('input')?.focus()
+            setQty(id, guests)
+          }}
+        >
+          Alla {guests}
+        </button>
+      )}
+    </>
+  )
+  const openButton = (id: string, name: string) => (
+    <h3 className="dish-name" translate="no">
+      <button type="button" className="dish-open" aria-haspopup="dialog" onClick={() => setSheet(id)}>{name}</button>
+    </h3>
+  )
+  const packageImage = (dishes: CateringDish[]) => dishes.find((d) => menuImageUrl(d.imageKey))
+
+  /** Rutan för den valda raden: cateringens eget pris och samma antal som raden. */
+  function renderSheet() {
+    if (!sheet) return null
+    const [kind, key] = [sheet.slice(0, 1), sheet.slice(2)]
+    const close = () => setSheet(null)
+    const done = <button type="button" className="btn-primary dish-sheet-done" onClick={close}>Klar</button>
+    if (kind === 'p') {
+      const p = cateringMenu.packages.find((x) => x.packageId === key)
+      if (!p) return null
+      const inside = p.dishIds.map((d) => dishById.get(d)).filter((d) => d !== undefined)
+      const photo = packageImage(inside)
+      const contents = [p.description, inside.length ? inside.map((d) => d.name).join(', ') : '',
+        p.minGuests ? `Från ${p.minGuests} gäster` : ''].filter(Boolean).join('\n')
+      return (
+        <DishSheet key={sheet} name={p.name} description={contents} imageKey={photo?.imageKey} imageFocus={photo?.imageFocus}
+          allergens={[...new Set(inside.flatMap((d) => d.allergens ?? []))]}
+          priceText={`${kronor(Math.round(p.pricePerGuest * 100))} per gäst`} onClose={close}>
+          <div className="dish-sheet-qty">
+            <label htmlFor={SHEET_QTY_ID}>Gäster</label>
+            <span className="catering-qty">{packageQty(sheet, p.name, SHEET_QTY_ID)}</span>
+          </div>
+          {done}
+        </DishSheet>
+      )
+    }
+    const d = kind === 'd' ? cateringMenu.dishes.find((x) => x.dishId === key) : undefined
+    const m = kind === 'm' ? legacyMenu.find((x) => x.menuItemId === key) : undefined
+    const item = d ?? m
+    if (!item) return null
+    const price = d ? d.pricePerPortion : m!.price
+    return (
+      <DishSheet key={sheet} name={item.name} description={item.description} imageKey={item.imageKey}
+        imageFocus={item.imageFocus} allergens={item.allergens} dietary={d?.dietary}
+        priceText={`${kronor(Math.round(price * 100))} per portion`} onClose={close}>
+        <div className="dish-sheet-qty">
+          <label htmlFor={SHEET_QTY_ID}>Portioner</label>
+          <span className="catering-qty">{qtyInput(sheet, `Portioner ${item.name}`, SHEET_QTY_ID)}</span>
+        </div>
+        {done}
+      </DishSheet>
+    )
+  }
 
   return (
     <>
@@ -358,28 +433,23 @@ export default function CateringPage() {
             <section aria-label="Paket">
               <h2 className="menu-content-title">Paket</h2>
               <p className="order-hint">Pris per gäst. Fyll i hur många gäster som ska ha paketet.</p>
-              <ul className="catering-dishes">
+              <ul className="dish-list catering-dishes">
                 {cateringMenu.packages.map((p) => {
                   const id = `p:${p.packageId}`
                   const inside = p.dishIds.map((d) => dishById.get(d)).filter((d) => d !== undefined)
+                  const photo = packageImage(inside)
                   return (
-                    <li key={p.packageId}>
-                      <div>
-                        <strong translate="no">{p.name}</strong>
+                    <li key={p.packageId} className="dish dish--sheet">
+                      <Plate src={menuImageUrl(photo?.imageKey)} position={menuImagePosition(photo?.imageFocus)} name={p.name} />
+                      <div className="dish-text">
+                        {openButton(id, p.name)}
                         {p.description && <p className="dish-desc">{p.description}</p>}
                         {inside.length > 0 && <p className="dish-desc" translate="no">{inside.map((d) => d.name).join(' · ')}</p>}
                         <Tags allergens={[...new Set(inside.flatMap((d) => d.allergens ?? []))]} />
                         {p.minGuests ? <p className="dish-desc">Från {p.minGuests} gäster</p> : null}
                       </div>
                       <span className="dish-price">{`${kronor(Math.round(p.pricePerGuest * 100))} per gäst`}</span>
-                      <span className="catering-qty">
-                        {qtyInput(id, `Gäster ${p.name}`)}
-                        {guests > 0 && quantities[id] !== guests && (
-                          <button type="button" className="link-button" onClick={() => setQty(id, guests)}>
-                            Alla {guests}
-                          </button>
-                        )}
-                      </span>
+                      <span className="catering-qty">{packageQty(id, p.name)}</span>
                     </li>
                   )
                 })}
@@ -390,16 +460,17 @@ export default function CateringPage() {
           {cateringMenu.dishes.length > 0 && (
             <section aria-label="Rätter">
               <h2 className="menu-content-title">{cateringMenu.packages.length ? 'Lägg till rätter' : 'Rätter'}</h2>
-              <ul className="catering-dishes">
+              <ul className="dish-list catering-dishes">
                 {cateringMenu.dishes.map((d) => (
-                  <li key={d.dishId}>
-                    <div>
-                      <strong translate="no">{d.name}</strong>
+                  <li key={d.dishId} className="dish dish--sheet">
+                    <Plate src={menuImageUrl(d.imageKey)} position={menuImagePosition(d.imageFocus)} name={d.name} />
+                    <div className="dish-text">
+                      {openButton(`d:${d.dishId}`, d.name)}
                       {d.description && <p className="dish-desc">{d.description}</p>}
                       <Tags allergens={d.allergens} dietary={d.dietary} />
                     </div>
                     <span className="dish-price">{`${kronor(Math.round(d.pricePerPortion * 100))} per portion`}</span>
-                    {qtyInput(`d:${d.dishId}`, `Portioner ${d.name}`)}
+                    <span className="catering-qty">{qtyInput(`d:${d.dishId}`, `Portioner ${d.name}`)}</span>
                   </li>
                 ))}
               </ul>
@@ -409,15 +480,16 @@ export default function CateringPage() {
           {groupByCategory(legacyMenu, legacyCategories).map((group) => (
             <section key={group.category} aria-label={group.label}>
               <h2 className="menu-content-title">{group.label}</h2>
-              <ul className="catering-dishes">
+              <ul className="dish-list catering-dishes">
                 {group.items.map((dish) => (
-                  <li key={dish.menuItemId}>
-                    <div>
-                      <strong translate="no">{dish.name}</strong>
+                  <li key={dish.menuItemId} className="dish dish--sheet">
+                    <Plate src={menuImageUrl(dish.imageKey)} position={menuImagePosition(dish.imageFocus)} name={dish.name} />
+                    <div className="dish-text">
+                      {openButton(`m:${dish.menuItemId}`, dish.name)}
                       {dish.description && <p className="dish-desc">{dish.description}</p>}
                     </div>
                     <span className="dish-price">{`${kronor(Math.round(dish.price * 100))} per portion`}</span>
-                    {qtyInput(`m:${dish.menuItemId}`, `Portioner ${dish.name}`)}
+                    <span className="catering-qty">{qtyInput(`m:${dish.menuItemId}`, `Portioner ${dish.name}`)}</span>
                   </li>
                 ))}
               </ul>
@@ -626,6 +698,7 @@ export default function CateringPage() {
           </button>
         </aside>
       </form>
+      {renderSheet()}
     </>
   )
 }

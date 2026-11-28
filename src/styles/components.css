@@ -1784,6 +1784,254 @@
 
 }
 
+/* --- Rätten i en egen ruta (shared/DishSheet.tsx): menyn och cateringen --- */
+
+/* Hela raden öppnar rutan: knappen sitter i rättens namn och täcker raden,
+   antalet ligger ovanpå så ett tryck där aldrig öppnar rutan. */
+.dish--sheet {
+  position: relative;
+}
+
+.dish-open {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-align: start;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.dish-open::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: var(--r-md);
+}
+
+.dish-open:focus-visible {
+  outline: none;
+}
+
+.dish-open:focus-visible::after {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+@media (hover: hover) {
+  .dish--sheet:hover .dish-open {
+    text-decoration: underline;
+    text-decoration-thickness: 1.5px;
+    text-underline-offset: 3px;
+  }
+}
+
+.dish--sheet .catering-qty {
+  position: relative;
+  z-index: 1;
+}
+
+.dish-text .dish-name {
+  margin: 0;
+}
+
+/* Cateringen i samma rader som menyn: tallrik, text, pris, antal. */
+.catering-dishes .dish {
+  grid-template-columns: auto minmax(0, 1fr) auto 84px;
+  gap: 12px 14px;
+}
+
+.catering-dishes .dish .dish-tags {
+  margin-top: 4px;
+}
+
+@media (max-width: 560px) {
+  .catering-dishes .dish {
+    grid-template-columns: auto minmax(0, 1fr) 72px;
+    gap: 6px 12px;
+  }
+
+  .catering-dishes .dish .plate {
+    --size: 60px;
+    grid-column: 1;
+    grid-row: 1 / span 2;
+    align-self: start;
+  }
+
+  .catering-dishes .dish .dish-text {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .catering-dishes .dish .dish-price {
+    grid-column: 2;
+    grid-row: 2;
+  }
+
+  .catering-dishes .dish .catering-qty {
+    grid-column: 3;
+    grid-row: 1 / span 2;
+  }
+}
+
+.opening-hours-modal-panel.dish-sheet {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  width: min(30rem, 100%);
+  max-height: min(90vh, 46rem);
+}
+
+.dish-sheet .opening-hours-modal-header {
+  margin-bottom: 0;
+}
+
+.dish-sheet .dish-sheet-name {
+  font: 760 1.25rem/1.25 var(--font);
+  font-stretch: 108%;
+  letter-spacing: -0.01em;
+  text-transform: none;
+  overflow-wrap: anywhere;
+}
+
+.dish-sheet-photo {
+  flex: none;
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+  border-radius: var(--r-md);
+  background: var(--fill);
+}
+
+.dish-sheet-photo img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.dish-sheet-plate {
+  display: flex;
+  justify-content: center;
+  padding: 0.25rem 0;
+}
+
+.dish-sheet-desc {
+  margin: 0;
+  color: var(--ink);
+  line-height: 1.5;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+
+.dish-sheet-tags {
+  display: grid;
+  gap: 6px;
+}
+
+.dish-sheet-tags p {
+  margin: 0;
+}
+
+.dish-sheet-price {
+  margin: 0;
+  font-weight: 750;
+  font-size: 1.05rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+
+.dish-sheet-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+  padding-top: 0.85rem;
+  border-top: 1.5px dashed var(--paper-line);
+}
+
+.dish-sheet-qty {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1 1 9rem;
+  min-width: 0;
+  font-weight: 600;
+}
+
+.dish-sheet-qty .catering-qty {
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+}
+
+.dish-sheet-qty input {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 44px;
+  padding: 6px 10px;
+  border: 1.5px solid var(--paper-line);
+  border-radius: var(--r-md);
+  background: var(--surface-soft);
+  color: var(--ink);
+  font: 500 16px/1.2 var(--mono);
+  font-variant-numeric: tabular-nums;
+  text-align: end;
+}
+
+.dish-sheet-qty input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.dish-sheet-done {
+  flex: 1 1 9rem;
+  min-height: 44px;
+  justify-content: center;
+}
+
+/* Telefon: rutan glider upp nerifrån och fyller bredden. */
+@media (max-width: 600px) {
+  .dish-sheet-root {
+    align-items: flex-end;
+    padding: 0;
+  }
+
+  .opening-hours-modal-panel.dish-sheet {
+    width: 100%;
+    max-height: 92dvh;
+    padding: 0.6rem 1.1rem calc(1.1rem + env(safe-area-inset-bottom, 0px));
+    border-radius: var(--r-md) var(--r-md) 0 0;
+    -webkit-mask: none;
+    mask: none;
+    animation: dish-sheet-up 320ms var(--ease) both;
+  }
+
+  .opening-hours-modal-panel.dish-sheet::before {
+    content: '';
+    flex: none;
+    align-self: center;
+    width: 40px;
+    height: 4px;
+    border-radius: 2px;
+    background: color-mix(in srgb, var(--ink) 22%, transparent);
+  }
+}
+
+@keyframes dish-sheet-up {
+  from {
+    transform: translateY(100%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .opening-hours-modal-panel.dish-sheet {
+    animation: none !important;
+  }
+}
+
 /* Bordet hålls (15 min) medan gästen fyller i uppgifterna */
 .booking-confirm-tables {
   display: grid;

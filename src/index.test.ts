@@ -7,7 +7,7 @@ import * as testing from './testing'
  * Att ta bort eller byta namn på något här är en major-version.
  */
 const COMPONENTS = [
-  'SiteProvider', 'Menu', 'CategoryNav', 'DishImage', 'Plate',
+  'SiteProvider', 'Menu', 'CategoryNav', 'DishImage', 'Plate', 'DishSheet',
   'BookingFlow', 'ManageBooking', 'OrderFlow', 'OrderStatus', 'CateringFlow', 'CateringRequest',
   'OfferCard', 'FloorPlan3D', 'FloorPlanSvg', 'GuaranteeStep',
   'PaymentTicket', 'PaymentPanel', 'AddToCalendar', 'Celebrate', 'DateInput', 'TimeInput',

@@ -73,6 +73,7 @@ export { Menu } from './features/meny/Menu'
 export { CategoryNav } from './features/meny/CategoryNav'
 export { DishImage } from './features/meny/DishImage'
 export { Plate } from './shared/Plate'
+export { DishSheet } from './shared/DishSheet'
 export {
   allergenText, CATEGORY_LABEL, CATEGORY_ORDER, DEFAULT_CATEGORIES, formatPrice, getPublicMenuWithCategories,
   groupByCategory, menuImagePosition, menuImageUrl,

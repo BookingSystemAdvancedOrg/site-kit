@@ -1,7 +1,9 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { SiteContext } from '../../shared/SiteContext'
 import { Menu } from './Menu'
+import { formatPrice } from './menuApi'
 
 const getMenu = vi.fn()
 vi.mock('../../shared/api', async (orig) => ({
@@ -41,5 +43,27 @@ describe('Menu', () => {
     render(site(<Menu hideHeading />))
     await screen.findByText('Pasta')
     expect(screen.queryByRole('heading', { level: 2, name: 'Meny' })).toBeNull()
+  })
+})
+
+describe('Menu dish sheet', () => {
+  beforeEach(() => getMenu.mockReset())
+
+  it('a row opens the dish in a sheet and Escape closes it', async () => {
+    const user = userEvent.setup()
+    getMenu.mockResolvedValue({
+      items: [{ ...dish, description: 'Färsk pasta med tomat', allergens: ['gluten'] }],
+      categories: [{ categoryId: 'mains', name: 'Varmrätter' }],
+    })
+    render(site(<Menu />))
+    const open = await screen.findByRole('button', { name: 'Pasta' })
+    await user.click(open)
+    const sheet = screen.getByRole('dialog', { name: 'Pasta' })
+    expect(within(sheet).getByText('Färsk pasta med tomat')).toBeInTheDocument()
+    expect(within(sheet).getByText('Innehåller: Gluten')).toBeInTheDocument()
+    expect(within(sheet).getByText(formatPrice(120))).toBeInTheDocument()
+    await user.keyboard('{Escape}')
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(open).toHaveFocus()
   })
 })
